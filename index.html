@@ -126,6 +126,13 @@
   .progress { height:4px; background:var(--soft); border-radius:2px; overflow:hidden; margin-top:7px; max-width:220px; }
   .progress i { display:block; height:100%; background:var(--green); }
   .group { padding:4px 14px 4px 12px; }
+  .search { display:flex; align-items:center; gap:8px; background:var(--card); border:1px solid var(--line); border-radius:12px; padding:2px 12px; margin-bottom:12px; }
+  .search svg { width:18px; height:18px; flex:none; stroke:var(--faint); fill:none; stroke-width:2; stroke-linecap:round; }
+  .search input { border:none; padding:10px 0; background:transparent; }
+  .search input:focus { outline:none; }
+  .search input::-webkit-search-cancel-button { display:none; }
+  .search:focus-within { border-color:var(--blue); }
+  mark { background:var(--orange-soft); color:inherit; border-radius:3px; padding:0 1px; }
   .showdone { display:flex; align-items:center; gap:8px; font-size:14px; color:var(--sub); margin:6px 4px; }
 
   /* ---- やる順 ---- */
@@ -256,7 +263,7 @@
         if (db.generated[key]) continue;
         db.generated[key] = 1;
         db.tasks.push({ id: db.nextId++, parentId: null, level: '親', name: r.name, estimate: r.estimate,
-          priority: r.priority, deadline: d, done: false, createdAt: now, doneAt: '', recurId: r.id });
+          priority: r.priority, deadline: d, deadlineTime: r.time || '', done: false, createdAt: now, doneAt: '', recurId: r.id });
         changed = true;
       }
     });
@@ -272,7 +279,7 @@
       recurring: db.recurring,
       tasks: db.tasks.map(function (t) {
         return { id: t.id, parentId: t.parentId, level: t.level, name: t.name, estimate: t.estimate,
-                 priority: t.priority, deadline: t.deadline, done: t.done, recurId: t.recurId || null };
+                 priority: t.priority, deadline: t.deadline, deadlineTime: t.deadlineTime || '', done: t.done, recurId: t.recurId || null };
       }),
       settings: db.settings, today: todayStr()
     }));
@@ -302,7 +309,7 @@
     addRecurring: function (r) {
       var db = load();
       db.recurring.push({ id: db.nextRecurId++, name: String(r.name), estimate: Number(r.estimate) || 0,
-        priority: Number(r.priority) || 3, type: r.type, dows: r.dows || [], mday: Number(r.mday) || 1, start: todayStr() });
+        priority: Number(r.priority) || 3, type: r.type, dows: r.dows || [], mday: Number(r.mday) || 1, time: r.time || '', start: todayStr() });
       return finish(db);
     },
     /** 繰り返しをやめる。まだ終わっていない今日以降の回も消す */
@@ -330,7 +337,7 @@
           var id = db.nextId++;
           if (pid === parentId) newIds.push(id);
           db.tasks.push({ id: id, parentId: pid, level: LEVELS[depth], name: String(n.name),
-            estimate: Number(n.estimate) || 0, priority: Number(n.priority) || 3, deadline: n.deadline || '',
+            estimate: Number(n.estimate) || 0, priority: Number(n.priority) || 3, deadline: n.deadline || '', deadlineTime: n.deadline ? (n.deadlineTime || '') : '',
             done: false, createdAt: now, doneAt: '' });
           walk(n.children || [], id, depth + 1);
         });
@@ -341,6 +348,7 @@
       var db = load(), t = db.tasks.filter(function (x) { return x.id === Number(id); })[0];
       if (!t) throw new Error('タスクが見つかりません');
       t.name = String(f.name); t.estimate = Number(f.estimate) || 0; t.priority = Number(f.priority) || 3; t.deadline = f.deadline || '';
+      t.deadlineTime = t.deadline ? (f.deadlineTime || '') : '';
       return finish(db);
     },
     setDone: function (id, done) {
@@ -503,13 +511,15 @@ function parseInput(text, opts) {
   lines.forEach(function (l) {
     var depth = l.depth - minD;
     if (depth > stack.length) depth = stack.length; // 飛び級は1段だけに直す
-    var t = l.text, deadline = '', priority = null, est = 0, hasEst = false;
+    var t = l.text, deadline = '', deadlineTime = '', priority = null, est = 0, hasEst = false;
 
     var dm = t.match(/(?:〆|@|(?:締め?切り?|期限)[:\s])\s*([^\s]+)/);
     if (dm) {
       var d = parseDate(dm[1], today);
       if (d) deadline = d; else errors.push(l.no + '行目：締切「' + dm[1] + '」が読めません');
       t = t.replace(dm[0], ' ');
+      var tm = t.match(/(?:^|\s)([01]?\d|2[0-3])[:：]([0-5]\d)(?=\s|$)/);
+      if (tm) { deadlineTime = pad(+tm[1]) + ':' + tm[2]; t = t.replace(tm[0], ' '); }
     }
     var pm = t.match(/(?:優(?:先度?)?|!)\s*([1-5])(?!\d)/);
     if (pm) { priority = +pm[1]; t = t.replace(pm[0], ' '); }
@@ -528,7 +538,7 @@ function parseInput(text, opts) {
     var node = {
       name: name, estimate: round2(est), hasEst: hasEst,
       priority: priority || (parent ? parent.priority : defPri),
-      deadline: deadline, children: []
+      deadline: deadline, deadlineTime: deadline ? deadlineTime : '', children: []
     };
     (parent ? parent.children : roots).push(node);
     stack[depth] = node;
@@ -546,8 +556,8 @@ function buildModel(tasks) {
   M.roots = tasks.filter(function (t) { return t.parentId === null || !byId[t.parentId]; });
   M.isLeaf = function (t) { return kids[t.id].length === 0; };
   M.effDeadline = function (t) {
-    for (var c = t; c; c = byId[c.parentId]) if (c.deadline) return { date: c.deadline, own: c === t };
-    return { date: '', own: true };
+    for (var c = t; c; c = byId[c.parentId]) if (c.deadline) return { date: c.deadline, time: c.deadlineTime || '', own: c === t };
+    return { date: '', time: '', own: true };
   };
   M.closed = function (t) {
     for (var c = t; c; c = byId[c.parentId]) if (c.done) return true;
@@ -627,9 +637,10 @@ function makePlan(M, today, todayLeft, settings) {
   var order = {};
   M.tasks.forEach(function (t, i) { order[t.id] = i; });
   var items = M.openLeaves().map(function (t) {
-    return { t: t, left: t.estimate, dl: M.effDeadline(t).date };
+    var e = M.effDeadline(t);
+    return { t: t, left: t.estimate, dl: e.date, key: e.date ? e.date + ' ' + (e.time || '99:99') : '' };
   }).sort(function (a, b) {
-    var da = a.dl || '9999-12-31', db = b.dl || '9999-12-31';
+    var da = a.key || '9999-12-31', db = b.key || '9999-12-31';
     if (da !== db) return da < db ? -1 : 1;
     if (a.t.priority !== b.t.priority) return b.t.priority - a.t.priority;
     return order[a.t.id] - order[b.t.id];
@@ -658,6 +669,27 @@ function makePlan(M, today, todayLeft, settings) {
   days.push(cur);
   return { days: days.filter(function (d) { return d.items.length; }), leftover: leftover };
 }
+/** 検索用に文字をそろえる：全角/半角、大文字/小文字、カタカナ/ひらがなの違いをなくす */
+function normText(s) {
+  s = String(s || '');
+  if (s.normalize) s = s.normalize('NFKC');
+  return s.toLowerCase().replace(/[ァ-ヶ]/g, function (c) { return String.fromCharCode(c.charCodeAt(0) - 0x60); });
+}
+/** 検索：一致したタスクと、その上の階層をまとめて返す */
+function searchTasks(M, query) {
+  var words = normText(query).split(/\s+/).filter(Boolean);
+  var hit = {}, show = {}, n = 0;
+  if (!words.length) return null;
+  M.tasks.forEach(function (t) {
+    if (t.temp) return;
+    var name = normText(t.name);
+    if (words.every(function (w) { return name.indexOf(w) >= 0; })) {
+      hit[t.id] = true; n++;
+      for (var c = t; c; c = M.byId[c.parentId]) show[c.id] = true;
+    }
+  });
+  return { hit: hit, show: show, count: n, words: words };
+}
 // ===== LOGIC END =====
 
 // ===== 画面まわり =====
@@ -667,10 +699,10 @@ var M = buildModel([]);
 var tab = 'load', todayLeft = null, collapsed = {}, showDone = false;
 var addCtx = null;
 // ボタン入力用
-var C = { open: false, parentId: null, estimate: null, deadline: '', dlKey: '', priority: null, saving: false,
+var C = { open: false, parentId: null, estimate: null, deadline: '', dlKey: '', dlTime: '', priority: null, saving: false,
           repeat: '', dows: [], mday: 1 };
 var pending = [], tempSeq = 0, reqSeq = 0, appliedSeq = 0, busyN = 0;
-var calMonth = null, selDay = null, capTimers = {};
+var calMonth = null, selDay = null, capTimers = {}, query = '', SR = null;
 
 function $(id) { return document.getElementById(id); }
 function esc(s) {
@@ -755,7 +787,7 @@ function closeComposer() {
 }
 function setTarget(parentId) {
   C.parentId = parentId;
-  C.estimate = null; C.deadline = ''; C.dlKey = ''; C.priority = null; C.repeat = '';
+  C.estimate = null; C.deadline = ''; C.dlKey = ''; C.dlTime = ''; C.priority = null; C.repeat = '';
   if (parentId !== null) collapsed[parentId] = false;
 }
 function retarget(parentId) { setTarget(parentId); render(); scrollToTarget(); $('cName').focus(); }
@@ -828,6 +860,7 @@ function renderComposer() {
     + '<input type="date" class="dateinput' + (custom ? ' on' : '') + '" value="' + (custom ? C.deadline : '') + '" onchange="setDl(\'custom\', this.value)">'
     + (custom ? '<button class="link" onclick="setDl(\'\')">解除</button>' : '') + '</div>';
   }
+  if (C.dlKey || (!p && C.repeat)) h += timeRow();
 
   h += '<div class="clabel">優先度（5が最優先）</div><div class="chips">';
   [1, 2, 3, 4, 5].forEach(function (n) {
@@ -868,6 +901,19 @@ function setDl(key, date) {
   renderComposer(); keepFocus();
 }
 function setPri(n) { C.priority = n; renderComposer(); keepFocus(); }
+/** 締め切り時刻のボタン */
+function timeRow() {
+  var picks = ['', '09:00', '10:00', '12:00', '15:00', '17:00', '18:00'];
+  var custom = C.dlTime && picks.indexOf(C.dlTime) < 0;
+  var h = '<div class="clabel">締め切りの時刻</div><div class="chips">';
+  picks.forEach(function (t) {
+    h += '<button class="chip' + (C.dlTime === t ? ' on' : '') + '" onclick="setDlTime(\'' + t + '\')">' + (t ? t.replace(/^0/, '') : 'なし') + '</button>';
+  });
+  h += '</div><div class="dateline"><span class="muted">時刻を指定：</span>'
+    + '<input type="time" class="dateinput' + (custom ? ' on' : '') + '" value="' + (custom ? C.dlTime : '') + '" onchange="setDlTime(this.value)"></div>';
+  return h;
+}
+function setDlTime(t) { C.dlTime = t || ''; renderComposer(); keepFocus(); }
 function setRepeat(r) {
   C.repeat = r;
   if (r === 'weekly' && !C.dows.length) C.dows = [dow(S.today)];
@@ -890,13 +936,14 @@ function quickAdd() {
   var inp = $('cName'), name = inp.value.trim();
   if (!name) { inp.focus(); return; }
   var p = targetParent();
-  var node = { name: name, estimate: C.estimate || 0, priority: effPriority(), deadline: C.deadline, children: [] };
+  var node = { name: name, estimate: C.estimate || 0, priority: effPriority(), deadline: C.deadline,
+               deadlineTime: C.deadline ? C.dlTime : '', children: [] };
   inp.value = '';
   C.estimate = null;
 
   if (!p && C.repeat) {
     if (C.repeat === 'weekly' && !C.dows.length) { inp.value = name; toast('曜日を選んでください'); return; }
-    var rule = { name: name, estimate: node.estimate, priority: node.priority, type: C.repeat, dows: C.dows.slice(), mday: C.mday };
+    var rule = { name: name, estimate: node.estimate, priority: node.priority, type: C.repeat, dows: C.dows.slice(), mday: C.mday, time: C.dlTime };
     C.saving = true;
     renderComposer();
     callRaw('addRecurring', [rule], function () {
@@ -924,7 +971,7 @@ function quickAdd() {
 
   // 子・孫：保存を待たずにすぐ表示して、続けて入力できるようにする
   var temp = { id: -(++tempSeq), parentId: p.id, level: LV[LV.indexOf(p.level) + 1], name: name,
-               estimate: node.estimate, priority: node.priority, deadline: node.deadline, done: false, temp: true };
+               estimate: node.estimate, priority: node.priority, deadline: node.deadline, deadlineTime: node.deadlineTime, done: false, temp: true };
   pending.push(temp);
   render();
   inp.focus();
@@ -937,11 +984,28 @@ function quickAdd() {
 }
 
 // ---- 共通の表示部品 ----
+function nowHM() { var d = new Date(); return pad(d.getHours()) + ':' + pad(d.getMinutes()); }
+/** 締め切り（時刻も見る）を過ぎているか */
+function isPast(date, time) {
+  if (!date) return false;
+  if (date < S.today) return true;
+  return date === S.today && !!time && time <= nowHM();
+}
+/** 今日の締め切りまで、あと何時間か */
+function leftToday(time) {
+  var p = time.split(':'), d = new Date(), end = new Date(d.getFullYear(), d.getMonth(), d.getDate(), +p[0], +p[1]);
+  return (end - d) / 3600000;
+}
+function dlText(date, time) { return dayLabel(date) + (time ? ' ' + time : ''); }
 function dlPill(t, done) {
   var dl = M.effDeadline(t);
   if (!dl.date) return '';
-  var cls = done ? '' : dl.date < S.today ? ' late' : dl.date <= addDays(S.today, 1) ? ' soon' : '';
-  return '<span class="pill' + cls + (dl.own ? '' : ' inherit') + '">〆' + dayLabel(dl.date) + (!done && dl.date < S.today ? ' 期限切れ' : '') + '</span>';
+  var past = !done && isPast(dl.date, dl.time);
+  var cls = done ? '' : past ? ' late' : dl.date <= addDays(S.today, 1) ? ' soon' : '';
+  var extra = '';
+  if (past) extra = ' 期限切れ';
+  else if (!done && dl.date === S.today && dl.time) extra = '（あと' + fmtH(leftToday(dl.time)) + '）';
+  return '<span class="pill' + cls + (dl.own ? '' : ' inherit') + '">〆' + dlText(dl.date, dl.time) + extra + '</span>';
 }
 function pill(text, cls) { return '<span class="pill' + (cls ? ' ' + cls : '') + '">' + text + '</span>'; }
 
@@ -953,7 +1017,8 @@ function renderMeter() {
   var fin = finishMap(P);
   var lateN = M.openLeaves().filter(function (t) {
     var dl = M.effDeadline(t).date;
-    return dl && (dl < S.today || (fin[t.id] && fin[t.id] > dl));
+    var e = M.effDeadline(t);
+    return dl && (isPast(e.date, e.time) || (fin[t.id] && fin[t.id] > dl));
   }).length;
   var today = P.days.filter(function (d) { return d.date === S.today; })[0];
   var used = today ? today.used : 0, cap = todayLeft || 0;
@@ -1042,7 +1107,7 @@ function viewCal() {
     var cap = d === S.today ? todayLeft : capOf(d, S.settings);
     var used = dayMap[d] ? dayMap[d].used : 0;
     var dls = dlMap[d] || [];
-    var late = dls.some(function (t) { return past || fin[t.id] > d; });
+    var late = dls.some(function (t) { var e = M.effDeadline(t); return past || isPast(e.date, e.time) || fin[t.id] > d; });
     var cls = 'cell' + (inMonth ? '' : ' other') + (past ? ' past' : '') + (d === S.today ? ' today' : '') + (d === selDay ? ' sel' : '');
     var c = '<div class="dn' + (dow(d) === 0 ? ' sun' : dow(d) === 6 ? ' sat' : '') + '">' + toDate(d).getUTCDate() + '</div>';
     if (!past) {
@@ -1094,9 +1159,12 @@ function dayDetail(d, ctx) {
       });
     }
   }
-  var dls = ctx.dlMap[d] || [];
+  var dls = (ctx.dlMap[d] || []).slice().sort(function (a, b) {
+    return (M.effDeadline(a).time || '99:99') < (M.effDeadline(b).time || '99:99') ? -1 : 1;
+  });
+  function lateOf(t) { var e = M.effDeadline(t); return past || isPast(e.date, e.time) || ctx.fin[t.id] > d; }
   if (dls.length) {
-    var lateN = dls.filter(function (t) { return past || ctx.fin[t.id] > d; }).length;
+    var lateN = dls.filter(lateOf).length;
     var total = round2(dls.reduce(function (s, t) { return s + t.estimate; }, 0));
     h += '<div class="clabel">この日が締め切り（' + dls.length + '件・' + fmtH(total) + '）</div>'
       + '<div class="verdict ' + (lateN ? 'ng' : 'good') + '">'
@@ -1105,11 +1173,12 @@ function dayDetail(d, ctx) {
                       : '✓ すべて間に合う見込みです') + '</div>';
     dls.forEach(function (t) {
       var f = ctx.fin[t.id], st;
-      if (past) st = pill('期限切れ', 'late');
+      var et = M.effDeadline(t);
+      if (past || isPast(et.date, et.time)) st = pill('期限切れ', 'late');
       else if (!f) st = '';
       else if (f > d) st = pill(f === '9999-12-31' ? '入りきらない' : dayLabel(f) + 'に終わる予定', 'late');
       else st = pill(dayLabel(f) + 'に終わる予定', 'good');
-      h += taskLine(t, pill(fmtH(t.estimate)), st);
+      h += taskLine(t, pill(fmtH(t.estimate)) + (et.time ? pill(et.time + 'まで', 'info') : ''), st);
     });
   }
   if (past && !dls.length) h += '<p class="muted">過ぎた日です</p>';
@@ -1161,7 +1230,35 @@ function sendCap(d, v) {
 
 // ---- ツリー ----
 function viewTree() {
-  var roots = M.roots.filter(function (t) { return showDone || !M.closed(t); }).sort(function (a, b) {
+  return '<div class="search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>'
+    + '<input id="q" type="search" placeholder="タスクを検索" autocomplete="off" value="' + esc(query) + '" oninput="onSearch(this.value)">'
+    + (query ? '<button class="link" onclick="clearSearch()">クリア</button>' : '') + '</div>'
+    + '<div id="treeList">' + treeList() + '</div>';
+}
+function onSearch(v) {
+  var had = !!query;
+  query = v;
+  if (had !== !!query) { render(); var q = $('q'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); return; }
+  $('treeList').innerHTML = treeList();
+}
+function clearSearch() { query = ''; render(); }
+/** 一致した部分に印をつける */
+function markName(name) {
+  if (!SR) return esc(name);
+  var norm = normText(name), out = esc(name);
+  if (norm.length !== name.length) return out; // 文字数が変わる名前は印をつけない
+  SR.words.forEach(function (w) {
+    var i = norm.indexOf(w);
+    if (i >= 0) {
+      var part = name.substr(i, w.length);
+      out = out.replace(esc(part), '<mark>' + esc(part) + '</mark>');
+    }
+  });
+  return out;
+}
+function treeList() {
+  SR = searchTasks(M, query);
+  var roots = M.roots.filter(function (t) { return SR ? SR.show[t.id] : (showDone || !M.closed(t)); }).sort(function (a, b) {
     var da = M.effDeadline(a).date || '9999', db = M.effDeadline(b).date || '9999';
     if (da !== db) return da < db ? -1 : 1;
     return b.priority - a.priority;
@@ -1169,16 +1266,17 @@ function viewTree() {
   // 繰り返しタスクは、まだ終わっていない一番近い回だけ表示する
   var seenRecur = {}, laterCount = {};
   roots = roots.filter(function (t) {
-    if (!t.recurId || M.closed(t)) return true;
+    if (SR || !t.recurId || M.closed(t)) return true;
     if (seenRecur[t.recurId]) { laterCount[t.recurId] = (laterCount[t.recurId] || 0) + 1; return false; }
     seenRecur[t.recurId] = true;
     return true;
   });
   window._laterCount = laterCount;
   var h = '';
-  if (!roots.length) h += '<div class="card"><p class="muted">タスクはまだありません。右下の＋から追加できます。</p></div>';
+  if (SR) h += '<p class="muted" style="margin:0 4px 10px">' + (SR.count ? SR.count + '件見つかりました（完了したものも含みます）' : '「' + esc(query) + '」を含むタスクはありません') + '</p>';
+  else if (!roots.length) h += '<div class="card"><p class="muted">タスクはまだありません。右下の＋から追加できます。</p></div>';
   roots.forEach(function (t) { h += '<div class="card group">' + treeRow(t, 0) + '</div>'; });
-  h += '<label class="showdone"><input type="checkbox" class="chk" ' + (showDone ? 'checked' : '') + ' onchange="showDone=this.checked;render()">完了したものも表示</label>';
+  if (!SR) h += '<label class="showdone"><input type="checkbox" class="chk" ' + (showDone ? 'checked' : '') + ' onchange="showDone=this.checked;render()">完了したものも表示</label>';
   return h;
 }
 
@@ -1200,17 +1298,17 @@ function treeRow(t, depth) {
     var all = M.hours(t, false), rest = M.hours(t, true);
     progress = '<div class="progress"><i style="width:' + (all ? Math.round((all - rest) / all * 100) : 0) + '%"></i></div>';
   }
-  var isOpen = !collapsed[t.id];
+  var isOpen = SR ? true : !collapsed[t.id];
   var isTarget = C.open && C.parentId === t.id;
   var lvIdx = LV.indexOf(t.level);
   var h = '<div id="row-' + t.id + '" class="row p' + t.priority + ' lv' + depth + (depth ? ' child' : '') + (done ? ' done' : '') + (isTarget ? ' target' : '') + '" ' + indent + '>'
     + (leaf ? '<span class="caret"></span>' : '<button class="caret" onclick="toggleFold(' + t.id + ')" aria-label="開く・閉じる">' + (isOpen ? '▼' : '▶') + '</button>')
     + '<input type="checkbox" class="chk" ' + (done ? 'checked' : '') + ' onchange="toggleDone(' + t.id + ',this.checked)" aria-label="完了">'
-    + '<div class="main" onclick="openEdit(' + t.id + ')"><div class="nm">' + esc(t.name) + '</div><div class="meta">' + meta.join('') + '</div>' + progress + '</div>'
+    + '<div class="main" onclick="openEdit(' + t.id + ')"><div class="nm">' + (SR && SR.hit[t.id] ? markName(t.name) : esc(t.name)) + '</div><div class="meta">' + meta.join('') + '</div>' + progress + '</div>'
     + (lvIdx < 2 && !done ? '<button class="mini' + (isTarget ? ' on' : '') + '" onclick="openComposer(' + t.id + ')">＋' + LV[lvIdx + 1] + '</button>' : '')
     + '</div>';
   if (!leaf && isOpen) {
-    M.kids[t.id].filter(function (c) { return showDone || !M.closed(c); })
+    M.kids[t.id].filter(function (c) { return SR ? SR.show[c.id] : (showDone || !M.closed(c)); })
       .forEach(function (c) { h += treeRow(c, depth + 1); });
   }
   return h;
@@ -1288,7 +1386,7 @@ function updatePreview() {
   function sum(n) { return n.children.length ? n.children.reduce(function (s, c) { return s + sum(c); }, 0) : n.estimate; }
   function draw(n, depth) {
     var bits = [n.children.length ? '計' + fmtH(round2(sum(n))) : (n.hasEst ? fmtH(n.estimate) : '<span class="tag red">見積なし</span>')];
-    if (n.deadline) bits.push('〆' + dayLabel(n.deadline));
+    if (n.deadline) bits.push('〆' + dlText(n.deadline, n.deadlineTime));
     bits.push('優' + n.priority);
     h += '<div class="pv" style="padding-left:' + depth * 16 + 'px">' + (depth ? '└ ' : '') + esc(n.name)
       + ' <span class="muted">' + bits.join(' ・ ') + '</span></div>';
@@ -1325,7 +1423,9 @@ function openEdit(id) {
     + (leaf ? '<input id="eEst" type="number" min="0" step="5" inputmode="numeric" value="' + Math.round(t.estimate * 60) + '">'
             : '<input id="eEst" type="hidden" value="' + Math.round(t.estimate * 60) + '"><div class="muted">下のタスクの合計：' + fmtH(M.hours(t, false)) + '</div>')
     + '<label>優先度（5が最優先）</label><select id="ePri">' + pri + '</select>'
-    + '<label>締め切り</label><input id="eDl" type="date" value="' + esc(t.deadline) + '">'
+    + '<label>締め切り</label><div class="dateline" style="margin-top:0"><input id="eDl" type="date" class="dateinput" value="' + esc(t.deadline) + '">'
+    + '<input id="eTm" type="time" class="dateinput" style="max-width:130px" value="' + esc(t.deadlineTime || '') + '"></div>'
+    + '<div class="muted" style="margin-top:4px">時刻は空欄でもOKです</div>'
     + (!t.deadline && inh.date ? '<div class="muted">空欄のときは上の締切（' + dayLabel(inh.date) + '）を使います</div>' : '')
     + '<div class="btns"><button class="btn sub" onclick="closeModal()">やめる</button><button class="btn" onclick="saveEdit(' + id + ')">保存</button></div>'
     + '<div class="btns">'
@@ -1335,7 +1435,7 @@ function openEdit(id) {
 function saveEdit(id) {
   var name = $('eName').value.trim();
   if (!name) { toast('タスク名を入れてください'); return; }
-  call('updateTask', [id, { name: name, estimate: (parseFloat($('eEst').value) || 0) / 60, priority: +$('ePri').value, deadline: $('eDl').value }],
+  call('updateTask', [id, { name: name, estimate: (parseFloat($('eEst').value) || 0) / 60, priority: +$('ePri').value, deadline: $('eDl').value, deadlineTime: $('eDl').value ? $('eTm').value : '' }],
     function () { closeModal(); toast('保存しました'); });
 }
 function removeTask(id) {
@@ -1372,6 +1472,12 @@ function saveSettings() {
 function openPanel(html) { $('panel').innerHTML = html; $('panel').scrollTop = 0; $('modal').classList.remove('hidden'); }
 function closeModal() { $('modal').classList.add('hidden'); }
 
+setInterval(function () {
+  var a = document.activeElement;
+  if (a && /INPUT|TEXTAREA|SELECT/.test(a.tagName)) return;
+  if (!$('modal').classList.contains('hidden')) return;
+  render();
+}, 60000);
 if (window.google && google.script) {
   call('getData', []);
 } else {
@@ -1390,7 +1496,8 @@ if (window.google && google.script) {
     if (!rec.length) rh += '<p class="muted">登録はありません。＋で親タスクを追加するときに「繰り返し」を選ぶと登録できます。</p>';
     rec.forEach(function (r) {
       var when = names[r.type] + (r.type === 'weekly' ? '（' + r.dows.slice().sort(function (a, b) { return ((a + 6) % 7) - ((b + 6) % 7); }).map(function (d) { return W[d]; }).join('・') + '）' : '')
-        + (r.type === 'monthly' ? ' ' + r.mday + '日' : '');
+        + (r.type === 'monthly' ? ' ' + r.mday + '日' : '')
+        + (r.time ? ' ' + r.time + 'まで' : '');
       rh += '<div class="row"><div class="main"><div class="nm">🔁 ' + esc(r.name) + '</div><div class="meta">' + when
         + (r.estimate ? ' ・ ' + fmtH(r.estimate) : '') + ' ・ 優' + r.priority + '</div></div>'
         + '<button class="mini" style="color:var(--red)" onclick="stopRecurring(' + r.id + ')">やめる</button></div>';
