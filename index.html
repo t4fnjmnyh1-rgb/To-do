@@ -440,7 +440,7 @@ function makeYmd(y, m, d) {
   if (dt.getUTCMonth() !== m - 1) return null;
   return fmtDate(dt);
 }
-function round2(h) { return Math.round(h * 100) / 100; }
+function round2(h) { return Math.round(h * 600) / 600; } // 0.1分単位で丸める
 /** 時間を「1時間30分」「45分」の形にする */
 function fmtH(h) {
   var neg = h < 0, t = Math.round(Math.abs(h) * 60), hh = Math.floor(t / 60), mm = t % 60;
@@ -782,15 +782,17 @@ function renderComposer() {
   $('cAdd').disabled = C.saving;
   $('cAdd').textContent = C.saving ? '保存中…' : '追加';
 
-  var h = '<div class="clabel">時間</div><div class="chips">';
-  [[0.25, '15分'], [0.5, '30分'], [0.75, '45分'], [1, '1時間'], [1.5, '1時間30分'], [2, '2時間'], [3, '3時間'], [4, '4時間']].forEach(function (x) {
-    h += '<button class="chip' + (C.estimate === x[0] ? ' on' : '') + '" onclick="setEst(' + x[0] + ')">' + x[1] + '</button>';
+  var curMin = C.estimate ? Math.round(C.estimate * 60) : 0;
+  var h = '<div class="clabel">見積もり（分）</div><div class="chips">';
+  [10, 15, 30, 45, 60, 90, 120, 180, 240].forEach(function (m) {
+    h += '<button class="chip' + (curMin === m ? ' on' : '') + '" onclick="setEstMin(' + m + ')">' + m + '分</button>';
   });
   h += '</div><div class="stepper">'
-    + '<button class="chip step" onclick="stepEst(-0.25)">−15分</button>'
-    + '<div class="stepval">' + (C.estimate ? estLabel(C.estimate) : '未設定') + '</div>'
-    + '<button class="chip step" onclick="stepEst(0.25)">＋15分</button>'
-    + '<button class="chip step" onclick="stepEst(1)">＋1時間</button>'
+    + '<button class="chip step" onclick="stepEstMin(-15)">−15分</button>'
+    + '<button class="chip step" onclick="stepEstMin(-5)">−5分</button>'
+    + '<div class="stepval">' + (curMin ? curMin + '分' : '未設定') + '</div>'
+    + '<button class="chip step" onclick="stepEstMin(5)">＋5分</button>'
+    + '<button class="chip step" onclick="stepEstMin(15)">＋15分</button>'
     + '</div>';
 
   if (!p) {
@@ -835,6 +837,12 @@ function renderComposer() {
   $('cChips').innerHTML = h;
 }
 function keepFocus() { if (!('ontouchstart' in window)) $('cName').focus(); }
+function setEstMin(m) { var cur = C.estimate ? Math.round(C.estimate * 60) : 0; C.estimate = cur === m ? null : m / 60; renderComposer(); keepFocus(); }
+function stepEstMin(d) {
+  var m = (C.estimate ? Math.round(C.estimate * 60) : 0) + d;
+  C.estimate = m > 0 ? m / 60 : null;
+  renderComposer(); keepFocus();
+}
 function setEst(v) { C.estimate = C.estimate === v ? null : v; renderComposer(); keepFocus(); }
 function stepEst(d) {
   var v = round2((C.estimate || 0) + d);
@@ -1313,9 +1321,9 @@ function openEdit(id) {
   openPanel('<h3>タスクを編集</h3>'
     + (M.path(t) ? '<div class="muted">' + esc(M.path(t)) + '</div>' : '')
     + '<label>タスク名</label><input id="eName" value="' + esc(t.name) + '">'
-    + '<label>見積もり(時間)</label>'
-    + (leaf ? '<input id="eEst" type="number" min="0" step="0.25" value="' + t.estimate + '">'
-            : '<input id="eEst" type="hidden" value="' + t.estimate + '"><div class="muted">下のタスクの合計：' + fmtH(M.hours(t, false)) + '</div>')
+    + '<label>見積もり（分）</label>'
+    + (leaf ? '<input id="eEst" type="number" min="0" step="5" inputmode="numeric" value="' + Math.round(t.estimate * 60) + '">'
+            : '<input id="eEst" type="hidden" value="' + Math.round(t.estimate * 60) + '"><div class="muted">下のタスクの合計：' + fmtH(M.hours(t, false)) + '</div>')
     + '<label>優先度（5が最優先）</label><select id="ePri">' + pri + '</select>'
     + '<label>締め切り</label><input id="eDl" type="date" value="' + esc(t.deadline) + '">'
     + (!t.deadline && inh.date ? '<div class="muted">空欄のときは上の締切（' + dayLabel(inh.date) + '）を使います</div>' : '')
@@ -1327,7 +1335,7 @@ function openEdit(id) {
 function saveEdit(id) {
   var name = $('eName').value.trim();
   if (!name) { toast('タスク名を入れてください'); return; }
-  call('updateTask', [id, { name: name, estimate: parseFloat($('eEst').value) || 0, priority: +$('ePri').value, deadline: $('eDl').value }],
+  call('updateTask', [id, { name: name, estimate: (parseFloat($('eEst').value) || 0) / 60, priority: +$('ePri').value, deadline: $('eDl').value }],
     function () { closeModal(); toast('保存しました'); });
 }
 function removeTask(id) {
