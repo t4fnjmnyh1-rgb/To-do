@@ -1,0 +1,1150 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>タスク分解</title>
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="タスク分解">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="theme-color" content="#ffffff">
+<style>
+  :root { --bg:#f3f4f6; --card:#fff; --ink:#1f2937; --sub:#6b7280; --line:#e5e7eb;
+          --blue:#2563eb; --red:#dc2626; --orange:#d97706; --green:#16a34a; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family:-apple-system,"Hiragino Sans","Noto Sans JP",sans-serif; background:var(--bg); color:var(--ink); font-size:15px; }
+  header { position:sticky; top:0; z-index:5; background:var(--card); border-bottom:1px solid var(--line); }
+  .top { display:flex; align-items:center; justify-content:space-between; padding:10px 14px 4px; }
+  .top b { font-size:17px; }
+  .icon { background:none; border:none; font-size:20px; padding:4px 8px; color:var(--sub); }
+  .tabs { display:flex; }
+  .tab { flex:1; background:none; border:none; border-bottom:3px solid transparent; padding:10px 0; font-size:15px; color:var(--sub); }
+  .tab.on { color:var(--blue); border-bottom-color:var(--blue); font-weight:bold; }
+  main { padding:12px 12px 96px; }
+  .card { background:var(--card); border-radius:12px; padding:12px 14px; margin-bottom:12px; box-shadow:0 1px 2px rgba(0,0,0,.06); }
+  .muted { color:var(--sub); font-size:13px; }
+  .warn { background:#fef3c7; color:#92400e; border-radius:10px; padding:8px 12px; margin-bottom:10px; font-size:14px; }
+  .bad { background:#fee2e2; color:#991b1b; }
+  .sum3 { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-bottom:12px; }
+  .sum { background:var(--card); border-radius:12px; padding:10px; text-align:center; box-shadow:0 1px 2px rgba(0,0,0,.06); }
+  .sum .lb { font-size:12px; color:var(--sub); }
+  .sum .big { font-size:22px; font-weight:bold; margin:4px 0 2px; }
+  .sum .st { font-size:12px; font-weight:bold; }
+  .ok { color:var(--green); } .tight { color:var(--orange); } .over { color:var(--red); }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th { text-align:right; color:var(--sub); font-weight:normal; padding:4px 2px; border-bottom:1px solid var(--line); }
+  td { text-align:right; padding:7px 2px; border-bottom:1px solid var(--line); }
+  th:first-child, td:first-child { text-align:left; }
+  .inline { display:flex; align-items:center; gap:8px; }
+  .inline input { width:80px; }
+  input, select, textarea { font-size:16px; padding:9px 10px; border:1px solid #d1d5db; border-radius:8px; width:100%; font-family:inherit; background:#fff; }
+  textarea { min-height:170px; line-height:1.6; }
+  label { display:block; font-size:12px; color:var(--sub); margin:10px 0 4px; }
+  .btn { border:none; border-radius:10px; padding:11px 14px; font-size:15px; background:var(--blue); color:#fff; }
+  .btn.sub { background:#e5e7eb; color:var(--ink); }
+  .btn.danger { background:#fee2e2; color:var(--red); }
+  .btn:disabled { opacity:.4; }
+  .btns { display:flex; gap:8px; margin-top:14px; flex-wrap:wrap; }
+  .btns .btn { flex:1; }
+  .row { display:flex; align-items:center; gap:8px; padding:8px 0; border-bottom:1px solid var(--line); }
+  .row:last-child { border-bottom:none; }
+  .row .main { flex:1; min-width:0; }
+  .row .nm { word-break:break-all; }
+  .row .meta { font-size:12px; color:var(--sub); margin-top:2px; }
+  .row.done .nm { text-decoration:line-through; color:#9ca3af; }
+  .chk { width:24px; height:24px; flex:none; accent-color:var(--blue); }
+  .caret { width:22px; flex:none; text-align:center; color:var(--sub); background:none; border:none; font-size:13px; padding:0; }
+  .mini { flex:none; border:1px solid var(--line); background:#fff; border-radius:8px; padding:5px 8px; font-size:12px; color:var(--blue); }
+  .tag { display:inline-block; font-size:11px; padding:1px 6px; border-radius:6px; background:#eef2ff; color:#3730a3; margin-right:4px; }
+  .tag.red { background:#fee2e2; color:var(--red); }
+  .tag.gray { background:#f3f4f6; color:var(--sub); }
+  .dayhead { display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; }
+  .bar { height:6px; background:#e5e7eb; border-radius:3px; overflow:hidden; margin:4px 0 6px; }
+  .bar i { display:block; height:100%; background:var(--blue); }
+  #fab { position:fixed; right:18px; bottom:22px; width:58px; height:58px; border-radius:50%; border:none; background:var(--blue); color:#fff; font-size:30px; box-shadow:0 4px 12px rgba(37,99,235,.4); z-index:6; }
+  .modal { position:fixed; inset:0; background:rgba(0,0,0,.35); z-index:10; display:flex; align-items:flex-end; }
+  .modal.hidden { display:none; }
+  .panel { background:var(--card); width:100%; max-height:92vh; overflow:auto; border-radius:16px 16px 0 0; padding:16px 16px 24px; }
+  .panel h3 { margin:0 0 8px; font-size:17px; }
+  .preview { background:#f9fafb; border-radius:10px; padding:8px 10px; margin-top:10px; font-size:14px; }
+  .pv { padding:3px 0; }
+  .err { color:var(--red); font-size:13px; margin-top:6px; }
+  details { margin-top:8px; font-size:13px; color:var(--sub); }
+  details pre { background:#f9fafb; padding:8px; border-radius:8px; white-space:pre-wrap; color:var(--ink); }
+  #toast { position:fixed; left:50%; top:110px; transform:translateX(-50%); background:#111827; color:#fff; padding:9px 14px; border-radius:10px; font-size:14px; opacity:0; transition:opacity .2s; z-index:20; pointer-events:none; max-width:90%; }
+  #toast.show { opacity:.95; }
+  #busy { position:fixed; top:0; left:0; height:3px; width:100%; background:var(--blue); z-index:30; display:none; animation:pulse 1s infinite; }
+  @keyframes pulse { 50% { opacity:.3; } }
+  .composer { position:fixed; left:0; right:0; bottom:0; z-index:8; background:var(--card); border-top:1px solid var(--line);
+              box-shadow:0 -6px 18px rgba(0,0,0,.08); border-radius:16px 16px 0 0; padding:12px 14px 16px; max-height:58vh; overflow:auto; }
+  .composer.hidden { display:none; }
+  body.composing main { padding-bottom:62vh; }
+  body.composing #fab { display:none; }
+  .ctop { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; font-size:14px; }
+  .cinput { display:flex; gap:8px; margin-top:8px; }
+  .cinput .btn { flex:none; }
+  .clabel { font-size:12px; color:var(--sub); margin-top:10px; }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; margin-top:5px; }
+  .chip { border:1px solid #d1d5db; background:#fff; color:var(--ink); border-radius:999px; padding:6px 11px; font-size:14px; position:relative; }
+  .chip.pri { width:40px; padding:7px 0; text-align:center; }
+  .chip.on { background:var(--blue); border-color:var(--blue); color:#fff; }
+  .tab { font-size:14px; }
+  .calhead { display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; }
+  .calhead .icon { font-size:24px; color:var(--ink); }
+  .grid { display:grid; grid-template-columns:repeat(7,1fr); gap:3px; }
+  .grid.wk div { text-align:center; font-size:11px; color:var(--sub); padding:2px 0; }
+  .sun { color:#dc2626 !important; } .sat { color:#2563eb !important; }
+  .cell { background:#f9fafb; border:1px solid transparent; border-radius:8px; min-height:62px; padding:3px 3px 4px; display:flex; flex-direction:column; align-items:stretch; gap:2px; font-family:inherit; color:var(--ink); }
+  .cell.other { opacity:.4; }
+  .cell.past { background:#fff; color:#9ca3af; }
+  .cell.today { border-color:var(--blue); }
+  .cell.sel { background:#dbeafe; border-color:var(--blue); }
+  .cell .dn { font-size:13px; font-weight:bold; text-align:left; }
+  .cbar { height:5px; background:#e5e7eb; border-radius:3px; overflow:hidden; }
+  .cbar i { display:block; height:100%; background:var(--green); }
+  .cbar i.full { background:var(--orange); }
+  .cell .ch { font-size:10px; color:var(--sub); }
+  .cell .ch.rest { color:#9ca3af; }
+  .cdl { font-size:10px; font-weight:bold; color:#3730a3; background:#eef2ff; border-radius:4px; }
+  .cdl.late { color:#fff; background:var(--red); }
+  .legend { display:flex; flex-wrap:wrap; gap:10px; font-size:11px; color:var(--sub); margin-top:8px; }
+  .legend .late { color:var(--red); font-weight:bold; }
+  .lg { display:inline-block; width:14px; height:5px; background:var(--green); border-radius:2px; margin-right:4px; vertical-align:middle; }
+  .daysum { margin-top:10px; padding:8px 10px; border-radius:8px; background:#f3f4f6; font-size:14px; }
+  .daysum.okbg { background:#dcfce7; } .daysum.full { background:#ffedd5; }
+  .verdict { padding:8px 10px; border-radius:8px; font-size:14px; margin:4px 0 4px; }
+  .verdict.good { background:#dcfce7; color:#166534; } .verdict.ng { background:#fee2e2; color:#991b1b; }
+  .tag.okt { background:#dcfce7; color:#166534; }
+  .stepper { display:flex; align-items:center; gap:6px; margin-top:6px; }
+  .stepval { min-width:92px; text-align:center; font-weight:bold; font-size:15px; }
+  .chip.step { background:#f3f4f6; white-space:nowrap; padding:6px 9px; font-size:13px; }
+  .stepper .stepval { flex:1; min-width:70px; }
+  .dateline { display:flex; align-items:center; gap:8px; margin-top:8px; }
+  .dateinput { width:auto; flex:1; max-width:200px; padding:6px 10px; font-size:16px; }
+  .dateinput.on { border:2px solid var(--blue); }
+  .link { background:none; border:none; color:var(--blue); font-size:13px; padding:0; white-space:nowrap; }
+  .row.target { background:#eff6ff; border-radius:8px; }
+  .mini.on { background:var(--blue); color:#fff; border-color:var(--blue); }
+  .row.temp { opacity:.55; }
+</style>
+</head>
+<body>
+<div id="busy"></div>
+<header>
+  <div class="top"><b>タスク分解</b><span class="muted" style="margin-left:6px">ローカル版</span><button class="icon" onclick="openSettings()">⚙︎</button></div>
+  <div class="tabs">
+    <button class="tab" data-tab="load" onclick="setTab('load')">負荷</button>
+    <button class="tab" data-tab="cal" onclick="setTab('cal')">カレンダー</button>
+    <button class="tab" data-tab="tree" onclick="setTab('tree')">ツリー</button>
+    <button class="tab" data-tab="plan" onclick="setTab('plan')">やる順</button>
+  </div>
+</header>
+<main id="view"><div class="card muted">読み込み中…</div></main>
+<button id="fab" onclick="openComposer(null)">＋</button>
+<div id="composer" class="composer hidden">
+  <div class="ctop"><div id="cTarget"></div><button class="link" onclick="closeComposer()">閉じる</button></div>
+  <div class="cinput"><input id="cName" type="text" enterkeyhint="send" autocomplete="off" onkeydown="onNameKey(event)"><button class="btn" id="cAdd" onclick="quickAdd()">追加</button></div>
+  <div id="cChips"></div>
+</div>
+<div id="modal" class="modal hidden" onclick="if(event.target===this)closeModal()"><div class="panel" id="panel"></div></div>
+<div id="toast"></div>
+
+<script>
+// ===== ローカル保存版：データはこのブラウザの中だけに保存します =====
+(function () {
+  var KEY = 'task-bunkai-v1';
+  var LEVELS = ['親', '子', '孫'];
+
+  function pad(n) { return (n < 10 ? '0' : '') + n; }
+  function todayStr() { var d = new Date(); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); }
+
+  function load() {
+    var db = null;
+    try { db = JSON.parse(localStorage.getItem(KEY) || 'null'); } catch (e) {}
+    if (!db || !db.tasks) db = { tasks: [], settings: { weekday: 6, weekend: 0, overrides: {} }, nextId: 1 };
+    if (!db.settings.overrides) db.settings.overrides = {};
+    return db;
+  }
+  function save(db) {
+    try { localStorage.setItem(KEY, JSON.stringify(db)); }
+    catch (e) { throw new Error('このブラウザに保存できませんでした（プライベートモードでは保存できません）'); }
+  }
+  function out(db) {
+    return JSON.parse(JSON.stringify({
+      tasks: db.tasks.map(function (t) {
+        return { id: t.id, parentId: t.parentId, level: t.level, name: t.name, estimate: t.estimate,
+                 priority: t.priority, deadline: t.deadline, done: t.done };
+      }),
+      settings: db.settings, today: todayStr()
+    }));
+  }
+  function descendants(db, id) {
+    var ids = [id], added = true;
+    while (added) {
+      added = false;
+      db.tasks.forEach(function (t) {
+        if (t.parentId !== null && ids.indexOf(t.parentId) >= 0 && ids.indexOf(t.id) < 0) { ids.push(t.id); added = true; }
+      });
+    }
+    return ids;
+  }
+  function ancestors(db, id) {
+    var ids = [id], cur = db.tasks.filter(function (t) { return t.id === id; })[0];
+    while (cur && cur.parentId !== null) {
+      ids.push(cur.parentId);
+      var pid = cur.parentId;
+      cur = db.tasks.filter(function (t) { return t.id === pid; })[0];
+    }
+    return ids;
+  }
+
+  var api = {
+    getData: function () { return out(load()); },
+    addTree: function (parentId, nodes) {
+      var db = load(), base = 0, newIds = [], now = new Date().toISOString();
+      if (parentId !== null) {
+        var p = db.tasks.filter(function (t) { return t.id === Number(parentId); })[0];
+        if (!p) throw new Error('追加先のタスクが見つかりません');
+        base = LEVELS.indexOf(p.level) + 1;
+        parentId = p.id;
+      }
+      (function walk(list, pid, depth) {
+        list.forEach(function (n) {
+          if (depth > 2) throw new Error('孫より下には分解できません');
+          var id = db.nextId++;
+          if (pid === parentId) newIds.push(id);
+          db.tasks.push({ id: id, parentId: pid, level: LEVELS[depth], name: String(n.name),
+            estimate: Number(n.estimate) || 0, priority: Number(n.priority) || 3, deadline: n.deadline || '',
+            done: false, createdAt: now, doneAt: '' });
+          walk(n.children || [], id, depth + 1);
+        });
+      })(nodes, parentId, base);
+      save(db);
+      var r = out(db); r.newIds = newIds; return r;
+    },
+    updateTask: function (id, f) {
+      var db = load(), t = db.tasks.filter(function (x) { return x.id === Number(id); })[0];
+      if (!t) throw new Error('タスクが見つかりません');
+      t.name = String(f.name); t.estimate = Number(f.estimate) || 0; t.priority = Number(f.priority) || 3; t.deadline = f.deadline || '';
+      save(db); return out(db);
+    },
+    setDone: function (id, done) {
+      var db = load(), ids = done ? descendants(db, Number(id)) : ancestors(db, Number(id)), now = new Date().toISOString();
+      db.tasks.forEach(function (t) { if (ids.indexOf(t.id) >= 0) { t.done = done; t.doneAt = done ? now : ''; } });
+      save(db); return out(db);
+    },
+    deleteTask: function (id) {
+      var db = load(), ids = descendants(db, Number(id));
+      db.tasks = db.tasks.filter(function (t) { return ids.indexOf(t.id) < 0; });
+      save(db); return out(db);
+    },
+    saveSettings: function (s) {
+      var db = load();
+      db.settings.weekday = Number(s.weekday) || 0; db.settings.weekend = Number(s.weekend) || 0;
+      save(db); return out(db);
+    },
+    setDayCap: function (date, hours) {
+      var db = load();
+      if (hours === null || hours === '' || hours === undefined) delete db.settings.overrides[date];
+      else db.settings.overrides[date] = Number(hours) || 0;
+      save(db); return out(db);
+    },
+    exportData: function () { return JSON.stringify(load(), null, 1); },
+    importData: function (text) {
+      var db = JSON.parse(text);
+      if (!db || !Array.isArray(db.tasks) || !db.settings) throw new Error('バックアップファイルの形式が違います');
+      if (!db.nextId) db.nextId = db.tasks.reduce(function (m, t) { return Math.max(m, t.id); }, 0) + 1;
+      save(db); return out(db);
+    }
+  };
+
+  // Apps Script と同じ呼び方（google.script.run.xxx）で使えるようにする
+  function runner(ok, ng) {
+    var o = {
+      withSuccessHandler: function (f) { return runner(f, ng); },
+      withFailureHandler: function (f) { return runner(ok, f); }
+    };
+    Object.keys(api).forEach(function (k) {
+      o[k] = function () {
+        var args = arguments;
+        setTimeout(function () {
+          try { var r = api[k].apply(null, args); if (ok) ok(r); }
+          catch (e) { if (ng) ng(e); }
+        }, 0);
+      };
+    });
+    return o;
+  }
+  window.google = { script: { run: runner() } };
+  window.LOCAL_API = api;
+
+  // ブラウザが勝手にデータを消さないようにお願いする（対応ブラウザのみ）
+  try { if (navigator.storage && navigator.storage.persist) navigator.storage.persist(); } catch (e) {}
+})();
+
+</script>
+<script>
+// ===== LOGIC START（ここから計算まわり） =====
+var W = ['日','月','火','水','木','金','土'];
+var LV = ['親','子','孫'];
+
+function pad(n) { return (n < 10 ? '0' : '') + n; }
+function toDate(s) { var p = s.split('-'); return new Date(Date.UTC(+p[0], +p[1] - 1, +p[2])); }
+function fmtDate(d) { return d.getUTCFullYear() + '-' + pad(d.getUTCMonth() + 1) + '-' + pad(d.getUTCDate()); }
+function addDays(s, n) { var d = toDate(s); d.setUTCDate(d.getUTCDate() + n); return fmtDate(d); }
+function dow(s) { return toDate(s).getUTCDay(); }
+function makeYmd(y, m, d) {
+  if (m < 1 || m > 12 || d < 1 || d > 31) return null;
+  var dt = new Date(Date.UTC(y, m - 1, d));
+  if (dt.getUTCMonth() !== m - 1) return null;
+  return fmtDate(dt);
+}
+function round2(h) { return Math.round(h * 100) / 100; }
+function fmtH(h) { return round2(h) + 'h'; }
+
+/** 「10/25」「明日」「金」「来週月」などを yyyy-mm-dd にする */
+function parseDate(s, today) {
+  s = s.trim();
+  if (s === '今日') return today;
+  if (s === '明日') return addDays(today, 1);
+  if (s === '明後日' || s === 'あさって') return addDays(today, 2);
+  var m = s.match(/^(\d{4})[-\/年](\d{1,2})[-\/月](\d{1,2})日?$/);
+  if (m) return makeYmd(+m[1], +m[2], +m[3]);
+  m = s.match(/^(\d{1,2})[\/月](\d{1,2})日?$/);
+  if (m) {
+    var y = +today.slice(0, 4);
+    var r = makeYmd(y, +m[1], +m[2]);
+    if (r && r < addDays(today, -60)) r = makeYmd(y + 1, +m[1], +m[2]);
+    return r;
+  }
+  m = s.match(/^(来週)?([日月火水木金土])(曜日?)?$/);
+  if (m) {
+    var target = W.indexOf(m[2]);
+    if (m[1]) {
+      var nextMon = addDays(today, ((8 - dow(today)) % 7) || 7);
+      return addDays(nextMon, (target + 6) % 7);
+    }
+    return addDays(today, (target - dow(today) + 7) % 7);
+  }
+  return null;
+}
+
+/**
+ * まとめ入力を木構造にする。
+ * 1行1タスク。行頭の「-」「・」や字下げの数が深さ。
+ * 時間「1h」「1.5時間」「30分」、締切「〆10/25」「@明日」、優先度「優4」「!4」。
+ */
+function parseInput(text, opts) {
+  var today = opts.today, maxDepth = opts.maxDepth, defPri = opts.defaultPriority || 3;
+  var lines = [], errors = [];
+  text.split(/\r?\n/).forEach(function (raw, i) {
+    if (!raw.trim()) return;
+    var line = raw.replace(/\u3000/g, '  ').replace(/\t/g, '  ');
+    var ws = line.match(/^ */)[0].length;
+    line = line.slice(ws);
+    var dm = line.match(/^([-・*＊－•]+)\s*/);
+    var dashes = 0;
+    if (dm) { dashes = dm[1].length; line = line.slice(dm[0].length); }
+    line = line.normalize ? line.normalize('NFKC') : line;
+    lines.push({ no: i + 1, depth: Math.floor(ws / 2) + dashes, text: line });
+  });
+  if (!lines.length) return { nodes: [], errors: [] };
+
+  var minD = Math.min.apply(null, lines.map(function (l) { return l.depth; }));
+  var roots = [], stack = [];
+  lines.forEach(function (l) {
+    var depth = l.depth - minD;
+    if (depth > stack.length) depth = stack.length; // 飛び級は1段だけに直す
+    var t = l.text, deadline = '', priority = null, est = 0, hasEst = false;
+
+    var dm = t.match(/(?:〆|@|(?:締め?切り?|期限)[:\s])\s*([^\s]+)/);
+    if (dm) {
+      var d = parseDate(dm[1], today);
+      if (d) deadline = d; else errors.push(l.no + '行目：締切「' + dm[1] + '」が読めません');
+      t = t.replace(dm[0], ' ');
+    }
+    var pm = t.match(/(?:優(?:先度?)?|!)\s*([1-5])(?!\d)/);
+    if (pm) { priority = +pm[1]; t = t.replace(pm[0], ' '); }
+    var hm = t.match(/(\d+(?:\.\d+)?)\s*(?:h|時間)(?:\s*(\d+)\s*(?:m|min|分))?(?![a-z])/i);
+    if (hm) { est += parseFloat(hm[1]) + (hm[2] ? +hm[2] / 60 : 0); hasEst = true; t = t.replace(hm[0], ' '); }
+    var mm = t.match(/(\d+)\s*(?:分|min|m)(?![a-z])/i);
+    if (mm) { est += +mm[1] / 60; hasEst = true; t = t.replace(mm[0], ' '); }
+
+    var name = t.replace(/\s+/g, ' ').trim();
+    if (!name) { errors.push(l.no + '行目：タスク名がありません'); return; }
+    if (depth >= maxDepth) {
+      errors.push(l.no + '行目「' + name + '」：' + (maxDepth === 0 ? 'これ以上分解できません' : '孫より下には分解できません'));
+      return;
+    }
+    var parent = depth > 0 ? stack[depth - 1] : null;
+    var node = {
+      name: name, estimate: round2(est), hasEst: hasEst,
+      priority: priority || (parent ? parent.priority : defPri),
+      deadline: deadline, children: []
+    };
+    (parent ? parent.children : roots).push(node);
+    stack[depth] = node;
+    stack.length = depth + 1;
+  });
+  return { nodes: roots, errors: errors };
+}
+
+/** タスク一覧から木の情報を作る */
+function buildModel(tasks) {
+  var byId = {}, kids = {};
+  tasks.forEach(function (t) { byId[t.id] = t; kids[t.id] = []; });
+  tasks.forEach(function (t) { if (t.parentId !== null && byId[t.parentId]) kids[t.parentId].push(t); });
+  var M = { tasks: tasks, byId: byId, kids: kids };
+  M.roots = tasks.filter(function (t) { return t.parentId === null || !byId[t.parentId]; });
+  M.isLeaf = function (t) { return kids[t.id].length === 0; };
+  M.effDeadline = function (t) {
+    for (var c = t; c; c = byId[c.parentId]) if (c.deadline) return { date: c.deadline, own: c === t };
+    return { date: '', own: true };
+  };
+  M.closed = function (t) {
+    for (var c = t; c; c = byId[c.parentId]) if (c.done) return true;
+    var k = kids[t.id];
+    return k.length > 0 && k.every(function (x) { return M.closed(x); });
+  };
+  M.leaves = function (t) {
+    if (!kids[t.id].length) return [t];
+    return kids[t.id].reduce(function (a, c) { return a.concat(M.leaves(c)); }, []);
+  };
+  M.hours = function (t, openOnly) {
+    return round2(M.leaves(t).filter(function (l) { return !openOnly || !M.closed(l); })
+      .reduce(function (s, l) { return s + l.estimate; }, 0));
+  };
+  M.openLeaves = function () {
+    return tasks.filter(function (t) { return M.isLeaf(t) && !M.closed(t); });
+  };
+  M.path = function (t) {
+    var names = [];
+    for (var c = byId[t.parentId]; c; c = byId[c.parentId]) names.unshift(c.name);
+    return names.join(' › ');
+  };
+  return M;
+}
+
+function defaultCap(date, settings) {
+  var d = dow(date);
+  return (d === 0 || d === 6) ? settings.weekend : settings.weekday;
+}
+/** その日に使える時間。カレンダーで個別に決めた日はその値を使う */
+function capOf(date, settings) {
+  var o = settings.overrides || {};
+  return Object.prototype.hasOwnProperty.call(o, date) ? o[date] : defaultCap(date, settings);
+}
+/** 割り振りの結果から、各タスクが終わる予定の日を出す（入りきらないものは 9999-12-31） */
+function finishMap(P) {
+  var f = {};
+  P.days.forEach(function (d) {
+    d.items.forEach(function (x) { if (!f[x.t.id] || d.date > f[x.t.id]) f[x.t.id] = d.date; });
+  });
+  P.leftover.forEach(function (t) { f[t.id] = '9999-12-31'; });
+  return f;
+}
+
+/** 締め切り日ごとの必要時間と、使える時間の比較 */
+function loadTable(M, today, todayLeft, settings) {
+  var open = M.openLeaves(), byDate = {}, noDl = 0, overdue = 0, overdueN = 0, noEst = 0;
+  open.forEach(function (t) {
+    if (!t.estimate) noEst++;
+    var dl = M.effDeadline(t).date;
+    if (!dl) { noDl += t.estimate; return; }
+    if (dl < today) { overdue += t.estimate; overdueN++; dl = today; }
+    byDate[dl] = (byDate[dl] || 0) + t.estimate;
+  });
+  function capUntil(d) {
+    var c = todayLeft;
+    for (var x = addDays(today, 1); x <= d; x = addDays(x, 1)) c += capOf(x, settings);
+    return round2(c);
+  }
+  function needUntil(d) {
+    var n = 0;
+    Object.keys(byDate).forEach(function (k) { if (k <= d) n += byDate[k]; });
+    return round2(n);
+  }
+  var rows = Object.keys(byDate).sort().map(function (d) {
+    var need = needUntil(d), cap = capUntil(d);
+    return { date: d, day: round2(byDate[d]), need: need, cap: cap, slack: round2(cap - need) };
+  });
+  return {
+    rows: rows, needUntil: needUntil, capUntil: capUntil,
+    noDeadline: round2(noDl), overdue: round2(overdue), overdueN: overdueN, noEstimate: noEst
+  };
+}
+
+/** 締め切りが近い順・優先度が高い順に、1日に使える時間へ自動で割り振る */
+function makePlan(M, today, todayLeft, settings) {
+  var order = {};
+  M.tasks.forEach(function (t, i) { order[t.id] = i; });
+  var items = M.openLeaves().map(function (t) {
+    return { t: t, left: t.estimate, dl: M.effDeadline(t).date };
+  }).sort(function (a, b) {
+    var da = a.dl || '9999-12-31', db = b.dl || '9999-12-31';
+    if (da !== db) return da < db ? -1 : 1;
+    if (a.t.priority !== b.t.priority) return b.t.priority - a.t.priority;
+    return order[a.t.id] - order[b.t.id];
+  });
+  var days = [], day = today, cur = { date: today, cap: todayLeft, used: 0, items: [] };
+  var guard = 0, leftover = [];
+  function next() {
+    days.push(cur);
+    day = addDays(day, 1);
+    cur = { date: day, cap: capOf(day, settings), used: 0, items: [] };
+    guard++;
+  }
+  for (var i = 0; i < items.length; i++) {
+    var it = items[i];
+    if (it.left <= 0) { cur.items.push({ t: it.t, h: 0, part: false, late: !!it.dl && cur.date > it.dl }); continue; }
+    while (it.left > 1e-9) {
+      if (guard > 120) { leftover.push(it.t); break; }
+      var free = cur.cap - cur.used;
+      if (free <= 1e-9) { next(); continue; }
+      var h = Math.min(free, it.left);
+      cur.items.push({ t: it.t, h: round2(h), part: h < it.t.estimate - 1e-9, late: !!it.dl && cur.date > it.dl });
+      cur.used += h;
+      it.left -= h;
+    }
+  }
+  days.push(cur);
+  return { days: days.filter(function (d) { return d.items.length; }), leftover: leftover };
+}
+// ===== LOGIC END =====
+
+// ===== 画面まわり =====
+var S = { tasks: [], settings: { weekday: 6, weekend: 0 },
+  today: (function () { var d = new Date(); return d.getFullYear() + '-' + pad(d.getMonth() + 1) + '-' + pad(d.getDate()); })() };
+var M = buildModel([]);
+var tab = 'load', todayLeft = null, collapsed = {}, showDone = false;
+var addCtx = null;
+// ボタン入力用
+var C = { open: false, parentId: null, estimate: null, deadline: '', dlKey: '', priority: null, saving: false };
+var pending = [], tempSeq = 0, reqSeq = 0, appliedSeq = 0, busyN = 0;
+var calMonth = null, selDay = null, capTimers = {};
+
+function $(id) { return document.getElementById(id); }
+function esc(s) {
+  return String(s).replace(/[&<>"']/g, function (c) {
+    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+  });
+}
+function dayLabel(d) {
+  if (d === S.today) return '今日';
+  if (d === addDays(S.today, 1)) return '明日';
+  var dt = toDate(d);
+  return (dt.getUTCMonth() + 1) + '/' + dt.getUTCDate() + '(' + W[dt.getUTCDay()] + ')';
+}
+function toast(msg) {
+  var t = $('toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(t._h); t._h = setTimeout(function () { t.classList.remove('show'); }, 2600);
+}
+
+function setBusy(d) { busyN += d; $('busy').style.display = busyN > 0 ? 'block' : 'none'; }
+
+/** サーバーの関数を呼ぶ。新しい結果だけを画面に反映する */
+function callRaw(fn, args, ok, ng) {
+  if (!window.google || !google.script) {
+    toast('Googleにつながっていません。デプロイしたURLから開いてください');
+    if (ng) ng();
+    render();
+    return;
+  }
+  var my = ++reqSeq;
+  setBusy(1);
+  var r = google.script.run
+    .withSuccessHandler(function (res) {
+      setBusy(-1);
+      if (res && res.tasks && my > appliedSeq) {
+        appliedSeq = my;
+        S = res;
+        if (todayLeft === null) todayLeft = capOf(S.today, S.settings);
+      }
+      if (ok) ok(res);
+      render();
+    })
+    .withFailureHandler(function (e) {
+      setBusy(-1);
+      toast('エラー：' + (e && e.message ? e.message : e));
+      if (ng) ng(e);
+      render();
+    });
+  r[fn].apply(r, args || []);
+}
+function call(fn, args, after) { callRaw(fn, args, after); }
+
+function setTab(t) { tab = t; render(); window.scrollTo(0, 0); }
+
+function render() {
+  M = buildModel(S.tasks.concat(pending));
+  if (C.parentId !== null && !M.byId[C.parentId]) C.parentId = null;
+  Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (b) {
+    b.classList.toggle('on', b.getAttribute('data-tab') === tab);
+  });
+  $('view').innerHTML = tab === 'load' ? viewLoad() : tab === 'cal' ? viewCal() : tab === 'tree' ? viewTree() : viewPlan();
+  if (C.open) renderComposer();
+}
+
+// ---- ボタンで追加 ----
+function openComposer(parentId) {
+  closeModal();
+  C.open = true;
+  setTarget(parentId);
+  document.body.classList.add('composing');
+  $('composer').classList.remove('hidden');
+  if (tab !== 'tree') tab = 'tree';
+  render();
+  scrollToTarget();
+  setTimeout(function () { $('cName').focus(); }, 60);
+}
+function closeComposer() {
+  C.open = false;
+  document.body.classList.remove('composing');
+  $('composer').classList.add('hidden');
+  render();
+}
+function setTarget(parentId) {
+  C.parentId = parentId;
+  C.estimate = null; C.deadline = ''; C.dlKey = ''; C.priority = null;
+  if (parentId !== null) collapsed[parentId] = false;
+}
+function retarget(parentId) { setTarget(parentId); render(); scrollToTarget(); $('cName').focus(); }
+function scrollToTarget() {
+  if (C.parentId === null) return;
+  var el = document.getElementById('row-' + C.parentId);
+  if (el) el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+}
+function targetParent() { return C.parentId === null ? null : M.byId[C.parentId]; }
+function effPriority() { var p = targetParent(); return C.priority || (p ? p.priority : 3); }
+
+function renderComposer() {
+  var p = targetParent();
+  var head;
+  if (!p) {
+    head = '<b>親タスクを追加</b>';
+  } else {
+    head = '<b>「' + esc(p.name) + '」</b>の下に<b>' + LV[LV.indexOf(p.level) + 1] + '</b>を追加'
+      + ' <button class="link" onclick="retarget(null)">親を追加に切替</button>';
+  }
+  $('cTarget').innerHTML = head;
+  $('cName').placeholder = p ? '名前を入れてEnter（続けて追加OK）' : '親タスク名';
+  $('cName').disabled = C.saving;
+  $('cAdd').disabled = C.saving;
+  $('cAdd').textContent = C.saving ? '保存中…' : '追加';
+
+  var h = '<div class="clabel">時間</div><div class="chips">';
+  [[0.25, '15分'], [0.5, '30分'], [1, '1h'], [1.5, '1.5h'], [2, '2h'], [3, '3h'], [4, '4h']].forEach(function (x) {
+    h += '<button class="chip' + (C.estimate === x[0] ? ' on' : '') + '" onclick="setEst(' + x[0] + ')">' + x[1] + '</button>';
+  });
+  h += '</div><div class="stepper">'
+    + '<button class="chip step" onclick="stepEst(-0.25)">−15分</button>'
+    + '<div class="stepval">' + (C.estimate ? estLabel(C.estimate) : '未設定') + '</div>'
+    + '<button class="chip step" onclick="stepEst(0.25)">＋15分</button>'
+    + '<button class="chip step" onclick="stepEst(1)">＋1h</button>'
+    + '</div>';
+
+  var inheritLabel = p ? (M.effDeadline(p).date ? '上と同じ（' + dayLabel(M.effDeadline(p).date) + '）' : '上と同じ（なし）') : 'なし';
+  var picks = [['', inheritLabel], ['today', '今日'], ['tomorrow', '明日'], ['after2', '明後日'], ['fri', '金曜'], ['nextmon', '来週月']];
+  var custom = C.dlKey === 'custom';
+  h += '<div class="clabel">締め切り</div><div class="chips">';
+  picks.forEach(function (x) {
+    h += '<button class="chip' + (C.dlKey === x[0] ? ' on' : '') + '" onclick="setDl(\'' + x[0] + '\')">' + x[1] + '</button>';
+  });
+  h += '</div><div class="dateline"><span class="muted">日付を指定：</span>'
+    + '<input type="date" class="dateinput' + (custom ? ' on' : '') + '" value="' + (custom ? C.deadline : '') + '" onchange="setDl(\'custom\', this.value)">'
+    + (custom ? '<button class="link" onclick="setDl(\'\')">解除</button>' : '') + '</div>';
+
+  h += '<div class="clabel">優先度（5が最優先）</div><div class="chips">';
+  [1, 2, 3, 4, 5].forEach(function (n) {
+    h += '<button class="chip pri' + (effPriority() === n ? ' on' : '') + '" onclick="setPri(' + n + ')">' + n + '</button>';
+  });
+  h += '</div><div class="clabel"><button class="link" onclick="openBulk(C.parentId)">文章でまとめて入力する</button></div>';
+  $('cChips').innerHTML = h;
+}
+function keepFocus() { if (!('ontouchstart' in window)) $('cName').focus(); }
+function setEst(v) { C.estimate = C.estimate === v ? null : v; renderComposer(); keepFocus(); }
+function stepEst(d) {
+  var v = round2((C.estimate || 0) + d);
+  C.estimate = v > 0 ? v : null;
+  renderComposer(); keepFocus();
+}
+function estLabel(h) {
+  var hh = Math.floor(h + 1e-9), mm = Math.round((h - hh) * 60);
+  return (hh ? hh + '時間' : '') + (mm ? mm + '分' : '') || '0分';
+}
+function dlFromKey(key) {
+  if (key === 'today') return S.today;
+  if (key === 'tomorrow') return addDays(S.today, 1);
+  if (key === 'after2') return addDays(S.today, 2);
+  if (key === 'fri') return parseDate('金', S.today);
+  if (key === 'nextmon') return parseDate('来週月', S.today);
+  return '';
+}
+function setDl(key, date) {
+  if (key === 'custom' && !date) key = '';
+  C.dlKey = key;
+  C.deadline = key === 'custom' ? date : dlFromKey(key);
+  renderComposer(); keepFocus();
+}
+function setPri(n) { C.priority = n; renderComposer(); keepFocus(); }
+
+function onNameKey(e) {
+  if (e.key === 'Enter' && !e.isComposing && e.keyCode !== 229) { e.preventDefault(); quickAdd(); }
+}
+
+function quickAdd() {
+  if (C.saving) return;
+  var inp = $('cName'), name = inp.value.trim();
+  if (!name) { inp.focus(); return; }
+  var p = targetParent();
+  var node = { name: name, estimate: C.estimate || 0, priority: effPriority(), deadline: C.deadline, children: [] };
+  inp.value = '';
+  C.estimate = null;
+
+  if (!p) {
+    // 親：保存を待ってから、その親の下に子を足すモードに切り替える
+    C.saving = true;
+    renderComposer();
+    callRaw('addTree', [null, [node]], function (res) {
+      C.saving = false;
+      if (res && res.newIds && res.newIds.length) {
+        setTarget(res.newIds[0]);
+        toast('親を登録しました。続けて子タスクを追加できます');
+      }
+      setTimeout(function () { scrollToTarget(); $('cName').focus(); }, 60);
+    }, function () { C.saving = false; inp.value = name; });
+    return;
+  }
+
+  // 子・孫：保存を待たずにすぐ表示して、続けて入力できるようにする
+  var temp = { id: -(++tempSeq), parentId: p.id, level: LV[LV.indexOf(p.level) + 1], name: name,
+               estimate: node.estimate, priority: node.priority, deadline: node.deadline, done: false, temp: true };
+  pending.push(temp);
+  render();
+  inp.focus();
+  callRaw('addTree', [p.id, [node]], function () {
+    pending = pending.filter(function (x) { return x !== temp; });
+  }, function () {
+    pending = pending.filter(function (x) { return x !== temp; });
+    toast('「' + name + '」を保存できませんでした');
+  });
+}
+
+// ---- 負荷 ----
+function viewLoad() {
+  var L = loadTable(M, S.today, todayLeft, S.settings);
+  var h = '';
+  if (L.overdueN) h += '<div class="warn bad">期限切れ ' + L.overdueN + '件（' + fmtH(L.overdue) + '）は「今日」に含めています</div>';
+  if (L.noEstimate) h += '<div class="warn">見積もりが入っていないタスクが ' + L.noEstimate + '件あります。合計が少なく出ています</div>';
+
+  h += '<div class="sum3">';
+  [['今日中', S.today], ['明日まで', addDays(S.today, 1)], ['7日以内', addDays(S.today, 6)]].forEach(function (p) {
+    var need = L.needUntil(p[1]), cap = L.capUntil(p[1]);
+    var cls = need > cap ? 'over' : need > cap * 0.8 ? 'tight' : 'ok';
+    var st = need > cap ? fmtH(round2(need - cap)) + '足りない' : need > cap * 0.8 ? 'ギリギリ' : 'あと' + fmtH(round2(cap - need)) + '空き';
+    h += '<div class="sum"><div class="lb">' + p[0] + '</div><div class="big ' + cls + '">' + fmtH(need) + '</div>'
+      + '<div class="lb">使える ' + fmtH(cap) + '</div><div class="st ' + cls + '">' + st + '</div></div>';
+  });
+  h += '</div>';
+
+  h += '<div class="card"><div class="inline"><span>今日あと</span>'
+    + '<input type="number" min="0" step="0.5" value="' + todayLeft + '" onchange="setTodayLeft(this.value)">'
+    + '<span>時間使える</span></div></div>';
+
+  h += '<div class="card"><b>締め切りまでに必要な時間</b>';
+  if (!L.rows.length) {
+    h += '<p class="muted">締め切りのある未完了タスクはありません</p>';
+  } else {
+    h += '<table><tr><th>締め切り</th><th>その日〆</th><th>累計</th><th>使える</th><th>差</th></tr>';
+    L.rows.forEach(function (r) {
+      var cls = r.slack < 0 ? 'over' : r.slack < 1 ? 'tight' : 'ok';
+      h += '<tr><td>' + dayLabel(r.date) + '</td><td>' + fmtH(r.day) + '</td><td>' + fmtH(r.need) + '</td><td>'
+        + fmtH(r.cap) + '</td><td class="' + cls + '">' + (r.slack > 0 ? '+' : '') + fmtH(r.slack) + '</td></tr>';
+    });
+    h += '</table>';
+  }
+  if (L.noDeadline) h += '<p class="muted">締め切りなし：' + fmtH(L.noDeadline) + '</p>';
+  h += '<p class="muted">累計＝その日までに終わらせる必要がある時間。使える＝今日の残り＋その日までの作業可能時間（⚙︎で設定）</p></div>';
+  return h;
+}
+
+function setTodayLeft(v) { todayLeft = Math.max(0, parseFloat(v) || 0); render(); }
+
+// ---- カレンダー ----
+function num(h) { return String(round2(h)); }
+function viewCal() {
+  if (!calMonth) calMonth = S.today.slice(0, 7);
+  if (!selDay) selDay = S.today;
+  var P = makePlan(M, S.today, todayLeft, S.settings);
+  var fin = finishMap(P), dayMap = {}, dlMap = {};
+  P.days.forEach(function (d) { dayMap[d.date] = d; });
+  M.openLeaves().forEach(function (t) {
+    var dl = M.effDeadline(t).date;
+    if (dl) (dlMap[dl] = dlMap[dl] || []).push(t);
+  });
+  var ctx = { P: P, fin: fin, dayMap: dayMap, dlMap: dlMap };
+
+  var y = +calMonth.slice(0, 4), m = +calMonth.slice(5, 7);
+  var first = calMonth + '-01';
+  var lastDay = addDays(makeYmd(m === 12 ? y + 1 : y, m === 12 ? 1 : m + 1, 1), -1);
+  var h = '<div class="card cal"><div class="calhead"><button class="icon" onclick="moveMonth(-1)">‹</button>'
+    + '<b>' + y + '年' + m + '月</b><button class="icon" onclick="moveMonth(1)">›</button></div>'
+    + '<div class="grid wk">' + W.map(function (w, i) { return '<div class="' + (i === 0 ? 'sun' : i === 6 ? 'sat' : '') + '">' + w + '</div>'; }).join('') + '</div><div class="grid">';
+  for (var d = addDays(first, -dow(first)); d <= lastDay || dow(d) !== 0; d = addDays(d, 1)) {
+    var inMonth = d.slice(0, 7) === calMonth, past = d < S.today;
+    var cap = d === S.today ? todayLeft : capOf(d, S.settings);
+    var used = dayMap[d] ? dayMap[d].used : 0;
+    var dls = dlMap[d] || [];
+    var late = dls.some(function (t) { return past || fin[t.id] > d; });
+    var cls = 'cell' + (inMonth ? '' : ' other') + (past ? ' past' : '') + (d === S.today ? ' today' : '') + (d === selDay ? ' sel' : '');
+    var c = '<div class="dn' + (dow(d) === 0 ? ' sun' : dow(d) === 6 ? ' sat' : '') + '">' + toDate(d).getUTCDate() + '</div>';
+    if (!past) {
+      if (cap > 0) {
+        var pct = Math.min(100, used / cap * 100);
+        c += '<div class="cbar"><i class="' + (pct >= 99.9 ? 'full' : '') + '" style="width:' + pct + '%"></i></div>'
+          + '<div class="ch">' + num(used) + '/' + num(cap) + '</div>';
+      } else {
+        c += '<div class="ch rest">休</div>';
+      }
+    }
+    if (dls.length) c += '<div class="cdl' + (late ? ' late' : '') + '">〆' + dls.length + '</div>';
+    h += '<button class="' + cls + '" onclick="selectDay(\'' + d + '\')">' + c + '</button>';
+  }
+  h += '</div><div class="legend"><span><i class="lg"></i>やる予定/使える時間</span><span class="late">〆n 間に合わない</span><span>〆n 締め切り</span></div></div>';
+  return h + dayDetail(selDay, ctx);
+}
+
+function dayDetail(d, ctx) {
+  var past = d < S.today;
+  var dt = toDate(d);
+  var title = (dt.getUTCMonth() + 1) + '月' + dt.getUTCDate() + '日(' + W[dt.getUTCDay()] + ')' + (d === S.today ? '・今日' : '');
+  var h = '<div class="card"><b>' + title + '</b>';
+  if (!past) {
+    var cap = d === S.today ? todayLeft : capOf(d, S.settings);
+    var o = S.settings.overrides || {};
+    var isOver = Object.prototype.hasOwnProperty.call(o, d);
+    var used = ctx.dayMap[d] ? ctx.dayMap[d].used : 0;
+    h += '<div class="clabel">この日に使える時間' + (d === S.today ? '（今日の残り）' : '') + '</div>'
+      + '<div class="stepper"><button class="chip step" onclick="stepCap(\'' + d + '\',-1)">−1h</button>'
+      + '<button class="chip step" onclick="stepCap(\'' + d + '\',-0.5)">−30分</button>'
+      + '<div class="stepval">' + (cap > 0 ? estLabel(cap) : '休み') + '</div>'
+      + '<button class="chip step" onclick="stepCap(\'' + d + '\',0.5)">＋30分</button>'
+      + '<button class="chip step" onclick="stepCap(\'' + d + '\',1)">＋1h</button></div>'
+      + '<div class="chips"><button class="chip' + (cap === 0 ? ' on' : '') + '" onclick="setCap(\'' + d + '\',0)">休みにする</button>'
+      + (isOver || (d === S.today && todayLeft !== defaultCap(d, S.settings))
+          ? '<button class="chip" onclick="resetCap(\'' + d + '\')">標準（' + num(defaultCap(d, S.settings)) + 'h）に戻す</button>'
+          : '<span class="muted" style="align-self:center">標準の時間です（⚙︎で変更）</span>')
+      + '</div>';
+    var free = round2(cap - used);
+    h += '<div class="daysum ' + (cap === 0 ? '' : free <= 0 ? 'full' : 'okbg') + '">やる予定 <b>' + fmtH(used) + '</b> ／ 使える <b>' + fmtH(cap) + '</b>'
+      + (cap === 0 ? '' : free > 0 ? '　あと' + fmtH(free) + '空き' : '　いっぱい') + '</div>';
+    var items = ctx.dayMap[d] ? ctx.dayMap[d].items : [];
+    if (items.length) {
+      h += '<div class="clabel">この日にやる予定</div>';
+      items.forEach(function (x) {
+        var dl = M.effDeadline(x.t).date;
+        h += taskLine(x.t, fmtH(x.h) + (x.part ? '（分割）' : '') + (dl ? ' ・ 〆' + dayLabel(dl) : ''), x.late ? '<span class="tag red">遅れ</span>' : '');
+      });
+    }
+  }
+  var dls = ctx.dlMap[d] || [];
+  if (dls.length) {
+    var lateN = dls.filter(function (t) { return past || ctx.fin[t.id] > d; }).length;
+    var total = round2(dls.reduce(function (s, t) { return s + t.estimate; }, 0));
+    h += '<div class="clabel">この日が締め切り（' + dls.length + '件・' + fmtH(total) + '）</div>'
+      + '<div class="verdict ' + (lateN ? 'ng' : 'good') + '">'
+      + (past ? '✗ 期限が過ぎています'
+              : lateN ? '✗ ' + lateN + '件が間に合わない見込みです。使える時間を増やすか、締め切り・優先度を見直してください'
+                      : '✓ すべて間に合う見込みです') + '</div>';
+    dls.forEach(function (t) {
+      var f = ctx.fin[t.id], st;
+      if (past) st = '<span class="tag red">期限切れ</span>';
+      else if (!f) st = '';
+      else if (f > d) st = '<span class="tag red">' + (f === '9999-12-31' ? '入りきらない' : dayLabel(f) + 'に終わる予定') + '</span>';
+      else st = '<span class="tag okt">' + dayLabel(f) + 'に終わる予定</span>';
+      h += taskLine(t, fmtH(t.estimate), st);
+    });
+  }
+  if (past && !dls.length) h += '<p class="muted">過ぎた日です</p>';
+  if (!past && !dls.length && !(ctx.dayMap[d] && ctx.dayMap[d].items.length)) h += '<p class="muted">この日の予定・締め切りはありません</p>';
+  return h + '</div>';
+}
+
+function taskLine(t, meta, tags) {
+  var path = M.path(t);
+  return '<div class="row"><input type="checkbox" class="chk" onchange="toggleDone(' + t.id + ',this.checked)">'
+    + '<div class="main" onclick="openEdit(' + t.id + ')"><div class="nm">' + esc(t.name) + '</div>'
+    + '<div class="meta">' + tags + meta + (path ? ' ・ ' + esc(path) : '') + '</div></div></div>';
+}
+
+function selectDay(d) {
+  selDay = d;
+  if (d.slice(0, 7) !== calMonth) calMonth = d.slice(0, 7);
+  render();
+}
+function moveMonth(n) {
+  var y = +calMonth.slice(0, 4), m = +calMonth.slice(5, 7) + n;
+  if (m < 1) { m = 12; y--; } if (m > 12) { m = 1; y++; }
+  calMonth = y + '-' + pad(m);
+  render();
+}
+function setCap(d, v) {
+  v = Math.max(0, round2(v));
+  S.settings.overrides = S.settings.overrides || {};
+  S.settings.overrides[d] = v;
+  if (d === S.today) todayLeft = v;
+  render();
+  sendCap(d, v);
+}
+function stepCap(d, delta) {
+  var cur = d === S.today ? todayLeft : capOf(d, S.settings);
+  setCap(d, cur + delta);
+}
+function resetCap(d) {
+  if (S.settings.overrides) delete S.settings.overrides[d];
+  if (d === S.today) todayLeft = defaultCap(d, S.settings);
+  render();
+  sendCap(d, null);
+}
+/** 連打しても最後の値だけ保存する */
+function sendCap(d, v) {
+  clearTimeout(capTimers[d]);
+  capTimers[d] = setTimeout(function () { callRaw('setDayCap', [d, v]); }, 700);
+}
+
+// ---- ツリー ----
+function viewTree() {
+  var roots = M.roots.filter(function (t) { return showDone || !M.closed(t); }).sort(function (a, b) {
+    var da = M.effDeadline(a).date || '9999', db = M.effDeadline(b).date || '9999';
+    if (da !== db) return da < db ? -1 : 1;
+    return b.priority - a.priority;
+  });
+  var h = '<div class="card">';
+  if (!roots.length) h += '<p class="muted">タスクがありません。右下の＋から追加できます</p>';
+  roots.forEach(function (t) { h += treeRow(t, 0); });
+  h += '</div><label class="inline" style="font-size:14px;color:inherit">'
+    + '<input type="checkbox" class="chk" ' + (showDone ? 'checked' : '') + ' onchange="showDone=this.checked;render()"> 完了したものも表示</label>';
+  return h;
+}
+
+function treeRow(t, depth) {
+  if (t.temp) {
+    return '<div class="row temp" style="padding-left:' + depth * 18 + 'px"><span class="caret"></span>'
+      + '<div class="main"><div class="nm">' + esc(t.name) + '</div><div class="meta">保存中…</div></div></div>';
+  }
+  var leaf = M.isLeaf(t), done = M.closed(t), dl = M.effDeadline(t);
+  var meta = [];
+  meta.push('<span class="tag gray">' + esc(t.level) + '</span>');
+  if (leaf) meta.push(t.estimate ? fmtH(t.estimate) : '<span class="tag red">見積なし</span>');
+  else meta.push('残' + fmtH(M.hours(t, true)) + ' / 全' + fmtH(M.hours(t, false)));
+  if (dl.date) {
+    var late = !done && dl.date < S.today;
+    meta.push('<span class="' + (late ? 'over' : '') + '">〆' + dayLabel(dl.date) + (dl.own ? '' : '（上から）') + '</span>');
+  }
+  meta.push('優' + t.priority);
+  var isOpen = !collapsed[t.id];
+  var isTarget = C.open && C.parentId === t.id;
+  var h = '<div id="row-' + t.id + '" class="row' + (done ? ' done' : '') + (isTarget ? ' target' : '') + '" style="padding-left:' + depth * 18 + 'px">'
+    + (leaf ? '<span class="caret"></span>' : '<button class="caret" onclick="toggleFold(' + t.id + ')">' + (isOpen ? '▼' : '▶') + '</button>')
+    + '<input type="checkbox" class="chk" ' + (done ? 'checked' : '') + ' onchange="toggleDone(' + t.id + ',this.checked)">'
+    + '<div class="main" onclick="openEdit(' + t.id + ')"><div class="nm">' + esc(t.name) + '</div><div class="meta">' + meta.join(' ・ ') + '</div></div>'
+    + (LV.indexOf(t.level) < 2 && !done ? '<button class="mini' + (isTarget ? ' on' : '') + '" onclick="openComposer(' + t.id + ')">＋' + LV[LV.indexOf(t.level) + 1] + '</button>' : '')
+    + '</div>';
+  if (!leaf && isOpen) {
+    M.kids[t.id].filter(function (c) { return showDone || !M.closed(c); })
+      .forEach(function (c) { h += treeRow(c, depth + 1); });
+  }
+  return h;
+}
+function toggleFold(id) { collapsed[id] = !collapsed[id]; render(); }
+function toggleDone(id, v) { if (id < 0) return; call('setDone', [id, v], function () { toast(v ? '完了にしました' : '未完了に戻しました'); }); }
+
+// ---- やる順 ----
+function viewPlan() {
+  var P = makePlan(M, S.today, todayLeft, S.settings);
+  var h = '<p class="muted" style="margin:0 0 10px">締め切りが近い順・優先度が高い順に、1日に使える時間へ自動で並べた目安です。Outlookに入れるときの下書きにどうぞ。</p>';
+  if (!P.days.length) return h + '<div class="card muted">未完了のタスクはありません</div>';
+  P.days.forEach(function (d, i) {
+    var pct = d.cap ? Math.min(100, d.used / d.cap * 100) : 100;
+    h += '<div class="card"><div class="dayhead"><b>' + dayLabel(d.date) + '</b>'
+      + '<span class="inline"><span class="muted">' + fmtH(d.used) + ' / ' + fmtH(d.cap) + '</span>'
+      + '<button class="mini" onclick="copyDay(' + i + ')">コピー</button></span></div>'
+      + '<div class="bar"><i style="width:' + pct + '%"></i></div>';
+    d.items.forEach(function (x) {
+      var dl = M.effDeadline(x.t).date;
+      var tags = (x.late ? '<span class="tag red">〆に間に合わない</span>' : '')
+        + (x.part ? '<span class="tag">分割</span>' : '')
+        + (x.t.estimate ? '' : '<span class="tag red">見積なし</span>');
+      h += '<div class="row"><input type="checkbox" class="chk" onchange="toggleDone(' + x.t.id + ',this.checked)">'
+        + '<div class="main" onclick="openEdit(' + x.t.id + ')"><div class="nm">' + esc(x.t.name) + '</div>'
+        + '<div class="meta">' + tags + fmtH(x.h) + (dl ? ' ・ 〆' + dayLabel(dl) : '') + (M.path(x.t) ? ' ・ ' + esc(M.path(x.t)) : '') + '</div></div></div>';
+    });
+    h += '</div>';
+  });
+  if (P.leftover.length) h += '<div class="warn bad">120日先まで入りきらないタスクがあります。⚙︎で作業可能時間を確認してください</div>';
+  window._plan = P;
+  return h;
+}
+
+function copyDay(i) {
+  var d = window._plan.days[i];
+  var text = dayLabel(d.date) + '\n' + d.items.map(function (x) {
+    var dl = M.effDeadline(x.t).date, path = M.path(x.t);
+    return '・' + x.t.name + (path ? '（' + path + '）' : '') + ' ' + fmtH(x.h) + (dl ? ' 〆' + dayLabel(dl) : '');
+  }).join('\n');
+  copyText(text);
+}
+function copyText(text) {
+  function fallback() {
+    var ta = document.createElement('textarea');
+    ta.value = text; document.body.appendChild(ta); ta.select();
+    var ok = false;
+    try { ok = document.execCommand('copy'); } catch (e) {}
+    document.body.removeChild(ta);
+    if (ok) toast('コピーしました');
+    else openPanel('<h3>コピーしてください</h3><textarea readonly>' + esc(text) + '</textarea><div class="btns"><button class="btn sub" onclick="closeModal()">閉じる</button></div>');
+  }
+  try {
+    navigator.clipboard.writeText(text).then(function () { toast('コピーしました'); }, fallback);
+  } catch (e) { fallback(); }
+}
+
+// ---- 追加（まとめ入力） ----
+function openBulk(parentId) {
+  var p = parentId === null ? null : M.byId[parentId];
+  var base = p ? LV.indexOf(p.level) + 1 : 0;
+  addCtx = { parentId: parentId, maxDepth: 3 - base, defaultPriority: p ? p.priority : 3 };
+  var title = p ? '「' + esc(p.name) + '」を分解' : '新しいタスク';
+  var ph = p ? '構成を考える 1h\nデータ集め\n- 売上データ 1h\n- 競合データ 1.5h\nスライド作成 3h'
+             : '提案書を作る 〆10/25 優4\n- 構成を考える 1h\n- データ集め\n-- 売上データ 1h\n-- 競合データ 1.5h\n- スライド作成 3h';
+  openPanel('<h3>' + title + '</h3>'
+    + '<textarea id="addText" placeholder="' + esc(ph) + '" oninput="updatePreview()"></textarea>'
+    + '<details><summary>書き方</summary><pre>1行に1タスク\n行頭の「-」の数で1段下（「・」や字下げでもOK）\n時間：1h　1.5時間　30分　1h30m\n締切：〆10/25　@明日　@金　@来週月\n優先度：優4　!4（1〜5、大きいほど高い）\n書かなければ：優先度は上と同じ、締切は上の締切を使います\n分解したタスクの時間は、下の合計になります</pre></details>'
+    + '<div id="preview" class="preview muted">入力すると、ここに確認が出ます</div>'
+    + '<div class="btns"><button class="btn sub" onclick="closeModal()">やめる</button><button class="btn" id="saveAdd" onclick="saveAdd()" disabled>登録する</button></div>');
+  setTimeout(function () { $('addText').focus(); }, 50);
+}
+
+function updatePreview() {
+  var r = parseInput($('addText').value, { today: S.today, maxDepth: addCtx.maxDepth, defaultPriority: addCtx.defaultPriority });
+  addCtx.parsed = r;
+  var h = '';
+  function sum(n) { return n.children.length ? n.children.reduce(function (s, c) { return s + sum(c); }, 0) : n.estimate; }
+  function draw(n, depth) {
+    var bits = [n.children.length ? '計' + fmtH(round2(sum(n))) : (n.hasEst ? fmtH(n.estimate) : '<span class="tag red">見積なし</span>')];
+    if (n.deadline) bits.push('〆' + dayLabel(n.deadline));
+    bits.push('優' + n.priority);
+    h += '<div class="pv" style="padding-left:' + depth * 16 + 'px">' + (depth ? '└ ' : '') + esc(n.name)
+      + ' <span class="muted">' + bits.join(' ・ ') + '</span></div>';
+    n.children.forEach(function (c) { draw(c, depth + 1); });
+  }
+  r.nodes.forEach(function (n) { draw(n, 0); });
+  r.errors.forEach(function (e) { h += '<div class="err">' + esc(e) + '</div>'; });
+  $('preview').innerHTML = h || '入力すると、ここに確認が出ます';
+  $('saveAdd').disabled = !r.nodes.length || r.errors.length > 0;
+}
+
+function saveAdd() {
+  var r = addCtx.parsed;
+  if (!r || !r.nodes.length || r.errors.length) return;
+  var parentId = addCtx.parentId;
+  $('saveAdd').disabled = true;
+  call('addTree', [parentId, r.nodes], function () {
+    if (parentId !== null) collapsed[parentId] = false;
+    closeModal();
+    if (C.open) $('cName').focus();
+    toast('登録しました');
+  });
+}
+
+// ---- 編集 ----
+function openEdit(id) {
+  var t = M.byId[id]; if (!t || t.temp) return;
+  var leaf = M.isLeaf(t), inh = M.effDeadline(t);
+  var pri = [1, 2, 3, 4, 5].map(function (n) { return '<option' + (n === t.priority ? ' selected' : '') + '>' + n + '</option>'; }).join('');
+  openPanel('<h3>タスクを編集</h3>'
+    + (M.path(t) ? '<div class="muted">' + esc(M.path(t)) + '</div>' : '')
+    + '<label>タスク名</label><input id="eName" value="' + esc(t.name) + '">'
+    + '<label>見積もり(時間)</label>'
+    + (leaf ? '<input id="eEst" type="number" min="0" step="0.25" value="' + t.estimate + '">'
+            : '<input id="eEst" type="hidden" value="' + t.estimate + '"><div class="muted">下のタスクの合計：' + fmtH(M.hours(t, false)) + '</div>')
+    + '<label>優先度（5が最優先）</label><select id="ePri">' + pri + '</select>'
+    + '<label>締め切り</label><input id="eDl" type="date" value="' + esc(t.deadline) + '">'
+    + (!t.deadline && inh.date ? '<div class="muted">空欄のときは上の締切（' + dayLabel(inh.date) + '）を使います</div>' : '')
+    + '<div class="btns"><button class="btn sub" onclick="closeModal()">やめる</button><button class="btn" onclick="saveEdit(' + id + ')">保存</button></div>'
+    + '<div class="btns">'
+    + (LV.indexOf(t.level) < 2 ? '<button class="btn sub" onclick="openComposer(' + id + ')">＋この下に追加</button>' : '')
+    + '<button class="btn danger" onclick="removeTask(' + id + ')">削除</button></div>');
+}
+function saveEdit(id) {
+  var name = $('eName').value.trim();
+  if (!name) { toast('タスク名を入れてください'); return; }
+  call('updateTask', [id, { name: name, estimate: parseFloat($('eEst').value) || 0, priority: +$('ePri').value, deadline: $('eDl').value }],
+    function () { closeModal(); toast('保存しました'); });
+}
+function removeTask(id) {
+  var n = M.byId[id] ? M.leaves(M.byId[id]).length : 0;
+  var msg = M.isLeaf(M.byId[id]) ? 'このタスクを削除しますか？' : 'このタスクと、下にある全部のタスクを削除しますか？';
+  if (!confirm(msg)) return;
+  call('deleteTask', [id], function () { closeModal(); toast('削除しました'); });
+}
+
+// ---- 設定 ----
+function openSettings() {
+  openPanel('<h3>作業に使える時間</h3><p class="muted">負荷の計算と「やる順」の割り振りに使います。会議などを除いた、実際にタスクに使える時間を入れてください。</p>'
+    + '<label>平日（時間）</label><input id="sWd" type="number" min="0" step="0.5" value="' + S.settings.weekday + '">'
+    + '<label>土日（時間）</label><input id="sWe" type="number" min="0" step="0.5" value="' + S.settings.weekend + '">'
+    + '<div class="btns"><button class="btn sub" onclick="closeModal()">やめる</button><button class="btn" onclick="saveSettings()">保存</button></div>');
+}
+function saveSettings() {
+  var s = { weekday: parseFloat($('sWd').value) || 0, weekend: parseFloat($('sWe').value) || 0 };
+  call('saveSettings', [s], function () { todayLeft = capOf(S.today, S.settings); closeModal(); toast('保存しました'); });
+}
+
+function openPanel(html) { $('panel').innerHTML = html; $('modal').classList.remove('hidden'); }
+function closeModal() { $('modal').classList.add('hidden'); }
+
+if (window.google && google.script) {
+  call('getData', []);
+} else {
+  $('view').innerHTML = '<div class="warn bad">この画面はGoogleにつながっていません。Apps Scriptで「デプロイ」したURLから開いてください。</div>';
+}
+</script>
+<script>
+// ===== ローカル版だけの機能：バックアップ =====
+(function () {
+  var baseOpen = openSettings;
+  openSettings = function () {
+    baseOpen();
+    $('panel').insertAdjacentHTML('beforeend',
+      '<h3 style="margin-top:22px">バックアップ</h3>'
+      + '<p class="muted">データはこのブラウザの中だけに保存されています。ブラウザの履歴やデータを消すと一緒に消えるので、ときどき保存しておいてください。</p>'
+      + '<div class="btns"><button class="btn sub" onclick="exportBackup()">バックアップを保存</button>'
+      + '<label class="btn sub" style="text-align:center">バックアップから戻す<input type="file" accept=".json,application/json" style="display:none" onchange="importBackup(this)"></label></div>');
+  };
+  window.exportBackup = function () {
+    var text = LOCAL_API.exportData();
+    var blob = new Blob([text], { type: 'application/json' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'タスク分解_バックアップ_' + S.today + '.json';
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 2000);
+    toast('バックアップを保存しました');
+  };
+  window.importBackup = function (input) {
+    var f = input.files && input.files[0];
+    if (!f) return;
+    if (!confirm('今のデータを、このバックアップの内容で置き換えます。よいですか？')) { input.value = ''; return; }
+    var r = new FileReader();
+    r.onload = function () {
+      call('importData', [String(r.result)], function () { closeModal(); toast('バックアップから戻しました'); });
+    };
+    r.readAsText(f);
+  };
+})();
+
+</script>
+</body>
+</html>
