@@ -234,6 +234,18 @@
   @keyframes jump { 0%, 40% { background:var(--orange-soft); } 100% { background:transparent; } }
   @media (prefers-reduced-motion: reduce) { .row.jump { animation:none; background:var(--orange-soft); } }
   .recurnote { margin-top:14px; padding:8px 10px; border-radius:8px; background:var(--blue-soft); color:var(--blue); font-size:13px; }
+  .everybtn { display:flex; align-items:flex-start; gap:10px; width:100%; text-align:left; margin-top:10px; padding:9px 11px;
+              border:1px solid var(--line); border-radius:10px; background:var(--card); color:var(--ink); }
+  .everybtn .box { width:20px; height:20px; flex:none; border:2px solid var(--faint); border-radius:5px; display:flex; align-items:center; justify-content:center; font-size:13px; color:#fff; }
+  .everybtn b { display:block; font-size:14px; }
+  .everybtn small { display:block; font-size:12px; color:var(--sub); margin-top:2px; }
+  .everybtn.on { border-color:var(--blue); background:var(--blue-soft); }
+  .everybtn.on .box { background:var(--blue); border-color:var(--blue); }
+  .tmpl { border:1px solid var(--line); border-radius:10px; padding:4px 10px; margin-top:6px; }
+  .trow { display:flex; align-items:center; gap:8px; padding:7px 0; border-bottom:1px solid var(--line); font-size:14px; }
+  .trow:last-child { border-bottom:none; }
+  .trow.sub { padding-left:16px; font-size:13px; }
+  .trow .tn { flex:1; min-width:0; }
   .showdone { display:flex; align-items:center; gap:8px; font-size:14px; color:var(--sub); margin:6px 4px; }
 
   /* ---- やる順 ---- */
@@ -354,6 +366,58 @@
     }
     return false;
   }
+  // ---- 繰り返しの「毎回つける子タスク」 ----
+  // rule.children = [{ tid, name, estimate, priority, children: [{ tid, name, estimate, priority }] }]
+  function flatTemplate(rule) {
+    var out = [];
+    (rule.children || []).forEach(function (c) {
+      out.push({ item: c, parentTid: null, depth: 1 });
+      (c.children || []).forEach(function (g) { out.push({ item: g, parentTid: c.tid, depth: 2 }); });
+    });
+    return out;
+  }
+  /** 新しい項目に番号をつける */
+  function assignTids(rule) {
+    if (!rule.nextTid) rule.nextTid = 1;
+    flatTemplate(rule).forEach(function (f) { if (!f.item.tid) f.item.tid = rule.nextTid++; });
+    // 番号が重なっていないかの念のための調整
+    flatTemplate(rule).forEach(function (f) { if (f.item.tid >= rule.nextTid) rule.nextTid = f.item.tid + 1; });
+  }
+  /** 1つの回に、毎回つける子タスクをそろえる（足りないものを足す・消えたものを消す・名前などを合わせる） */
+  function syncInstance(db, root, rule, now) {
+    var flat = flatTemplate(rule), live = {};
+    flat.forEach(function (f) { live[f.item.tid] = f; });
+    var under = descendants(db, root.id).slice(1).map(function (id) { return db.tasks.filter(function (t) { return t.id === id; })[0]; });
+    // テンプレートから消えたものは消す（終わったものは残す）
+    var del = [];
+    under.forEach(function (t) {
+      if (t && t.tmplId && !live[t.tmplId] && !t.done) del = del.concat(descendants(db, t.id));
+    });
+    if (del.length) db.tasks = db.tasks.filter(function (t) { return del.indexOf(t.id) < 0; });
+    under = under.filter(function (t) { return t && del.indexOf(t.id) < 0; });
+    var byTid = {};
+    under.forEach(function (t) { if (t.tmplId) byTid[t.tmplId] = t; });
+    flat.forEach(function (f) {
+      var it = f.item, t = byTid[it.tid];
+      if (t) {
+        if (!t.done) { t.name = it.name; t.estimate = Number(it.estimate) || 0; t.priority = Number(it.priority) || rule.priority; }
+        return;
+      }
+      var parent = f.parentTid ? byTid[f.parentTid] : root;
+      if (!parent) return;
+      t = { id: db.nextId++, parentId: parent.id, level: LEVELS[f.depth], name: it.name, estimate: Number(it.estimate) || 0,
+            priority: Number(it.priority) || rule.priority, deadline: '', deadlineTime: '', done: false, createdAt: now, doneAt: '', tmplId: it.tid };
+      db.tasks.push(t);
+      byTid[it.tid] = t;
+    });
+  }
+  /** まだ終わっていない今日以降の回すべてに反映する */
+  function syncRule(db, rule) {
+    var today = todayStr(), now = new Date().toISOString();
+    db.tasks.filter(function (t) { return t.recurId === rule.id && !t.done && t.deadline >= today; })
+      .forEach(function (root) { syncInstance(db, root, rule, now); });
+  }
+
   /** 今日から7日先までの回を、まだ作っていなければタスクとして作る */
   function materialize(db) {
     var today = todayStr(), changed = false, now = new Date().toISOString();
@@ -364,8 +428,10 @@
         var key = r.id + '|' + d;
         if (db.generated[key]) continue;
         db.generated[key] = 1;
-        db.tasks.push({ id: db.nextId++, parentId: null, level: '親', name: r.name, estimate: r.estimate,
-          priority: r.priority, deadline: d, deadlineTime: r.time || '', done: false, createdAt: now, doneAt: '', recurId: r.id });
+        var root = { id: db.nextId++, parentId: null, level: '親', name: r.name, estimate: r.estimate,
+          priority: r.priority, deadline: d, deadlineTime: r.time || '', done: false, createdAt: now, doneAt: '', recurId: r.id };
+        db.tasks.push(root);
+        if ((r.children || []).length) syncInstance(db, root, r, now);
         changed = true;
       }
     });
@@ -382,7 +448,7 @@
       logs: db.logs || {},
       tasks: db.tasks.map(function (t) {
         return { id: t.id, parentId: t.parentId, level: t.level, name: t.name, estimate: t.estimate,
-                 priority: t.priority, deadline: t.deadline, deadlineTime: t.deadlineTime || '', done: t.done, recurId: t.recurId || null };
+                 priority: t.priority, deadline: t.deadline, deadlineTime: t.deadlineTime || '', done: t.done, recurId: t.recurId || null, tmplId: t.tmplId || null };
       }),
       settings: db.settings, today: todayStr()
     }));
@@ -449,7 +515,7 @@
       rule.name = String(r.name); rule.estimate = Number(r.estimate) || 0; rule.priority = Number(r.priority) || 3;
       rule.time = r.time || ''; rule.type = newType; rule.dows = newDows; rule.mday = newMday;
       var hasKids = {};
-      db.tasks.forEach(function (t) { if (t.parentId !== null) hasKids[t.parentId] = true; });
+      db.tasks.forEach(function (t) { if (t.parentId !== null && !t.tmplId) hasKids[t.parentId] = true; });
       var del = [];
       db.tasks.forEach(function (t) {
         if (t.recurId !== id || t.done || t.deadline < today) return;
@@ -461,6 +527,11 @@
           if (!hasKids[t.id]) t.estimate = rule.estimate;
         }
       });
+      if (del.length) {
+        var all = [];
+        del.forEach(function (x) { all = all.concat(descendants(db, x)); });
+        del = all;
+      }
       if (patternChanged) {
         // これから先の日付は、新しい条件で作り直す
         Object.keys(db.generated).forEach(function (k) {
@@ -472,6 +543,17 @@
         Object.keys(kept).forEach(function (d) { db.generated[id + '|' + d] = 1; });
         db.tasks = db.tasks.filter(function (t) { return del.indexOf(t.id) < 0; });
       }
+      if (r.children) { rule.children = r.children; assignTids(rule); }
+      syncRule(db, rule);
+      return finish(db);
+    },
+    /** 毎回つける子タスクの一覧を置きかえて、今後の回に反映する */
+    setRecurringChildren: function (id, children) {
+      var db = load(), rule = db.recurring.filter(function (x) { return x.id === id; })[0];
+      if (!rule) throw new Error('繰り返しが見つかりません');
+      rule.children = children || [];
+      assignTids(rule);
+      syncRule(db, rule);
       return finish(db);
     },
     /** 繰り返しをやめる。まだ終わっていない今日以降の回も消す */
@@ -1014,7 +1096,7 @@ function closeComposer() {
 }
 function setTarget(parentId) {
   C.parentId = parentId;
-  C.estimate = null; C.deadline = ''; C.dlKey = ''; C.dlTime = ''; C.priority = null; C.repeat = '';
+  C.estimate = null; C.deadline = ''; C.dlKey = ''; C.dlTime = ''; C.priority = null; C.repeat = ''; C.every = false;
   if (parentId !== null) collapsed[parentId] = false;
 }
 function retarget(parentId) { setTarget(parentId); render(); scrollToTarget(); $('cName').focus(); }
@@ -1042,7 +1124,14 @@ function renderComposer() {
   $('cAdd').textContent = C.saving ? '保存中…' : '追加';
 
   var curMin = C.estimate ? Math.round(C.estimate * 60) : 0;
-  var h = '<div class="clabel">見積もり（分）</div><div class="chips">';
+  var h = '';
+  var rc = recurCtx(p);
+  if (rc) {
+    h += '<button class="everybtn' + (C.every ? ' on' : '') + '" onclick="C.every=!C.every;renderComposer();keepFocus()">'
+      + '<span class="box">' + (C.every ? '✓' : '') + '</span><span><b>🔁 毎回この' + LV[LV.indexOf(p.level) + 1] + 'タスクもつける</b>'
+      + '<small>' + esc(rc.rule.name) + '（' + recurWhen(rc.rule) + '）の今後の回すべてに追加します</small></span></button>';
+  }
+  h += '<div class="clabel">見積もり（分）</div><div class="chips">';
   [10, 15, 30, 45, 60, 90, 120, 180, 240].forEach(function (m) {
     h += '<button class="chip' + (curMin === m ? ' on' : '') + '" onclick="setEstMin(' + m + ')">' + m + '分</button>';
   });
@@ -1167,6 +1256,24 @@ function quickAdd() {
                deadlineTime: C.deadline ? C.dlTime : '', children: [] };
   inp.value = '';
   C.estimate = null;
+
+  var rc = recurCtx(p);
+  if (rc && C.every) {
+    // 繰り返しの「毎回つける子タスク」に登録して、今後の回すべてに足す
+    var tmpl = JSON.parse(JSON.stringify(rc.rule.children || []));
+    var item = { name: name, estimate: node.estimate, priority: node.priority, children: [] };
+    if (rc.parentTid) {
+      var holder = tmpl.filter(function (c) { return c.tid === rc.parentTid; })[0];
+      if (!holder) { toast('元になる子タスクが見つかりません'); return; }
+      (holder.children = holder.children || []).push(item);
+    } else tmpl.push(item);
+    C.saving = true; renderComposer();
+    callRaw('setRecurringChildren', [rc.rule.id, tmpl], function () {
+      C.saving = false; toast('今後の回すべてに追加しました');
+      setTimeout(function () { $('cName').focus(); }, 60);
+    }, function () { C.saving = false; inp.value = name; });
+    return;
+  }
 
   if (!p && C.repeat) {
     if (C.repeat === 'weekly' && !C.dows.length) { inp.value = name; toast('曜日を選んでください'); return; }
@@ -1730,6 +1837,7 @@ function treeRow(t, depth) {
   }
   var leaf = M.isLeaf(t), done = M.closed(t);
   var meta = [];
+  if (t.tmplId) meta.push('<span class="tag" title="毎回つく子タスク">🔁</span>');
   if (t.recurId) meta.push('<span class="tag">🔁' + (depth === 0 && !done && (window._laterCount || {})[t.recurId] ? ' ほか' + window._laterCount[t.recurId] + '回' : '') + '</span>');
   if (leaf) {
     meta.push(t.estimate ? pill(fmtH(t.estimate)) : pill('見積なし', 'late'));
@@ -1883,6 +1991,16 @@ function openEdit(id) {
     + '<button class="btn danger" onclick="removeTask(' + id + ')">削除</button></div>');
 }
 // ---- 繰り返しをまとめて編集 ----
+/** 追加先が繰り返しの回（またはその「毎回つける子タスク」）なら、元の繰り返しを返す */
+function recurCtx(p) {
+  if (!p || p.temp) return null;
+  if (p.recurId && p.parentId === null) { var r = ruleOf(p.recurId); return r ? { rule: r, parentTid: null } : null; }
+  var par = M.byId[p.parentId];
+  if (p.tmplId && par && par.recurId && par.parentId === null && LV.indexOf(p.level) === 1) {
+    var r2 = ruleOf(par.recurId); return r2 ? { rule: r2, parentTid: p.tmplId } : null;
+  }
+  return null;
+}
 var RECUR_NAMES = { daily: '毎日', weekdays: '平日', weekly: '毎週', monthly: '毎月' };
 function ruleOf(id) { return (S.recurring || []).filter(function (r) { return r.id === id; })[0]; }
 function recurWhen(r) {
@@ -1903,7 +2021,8 @@ var RE = null;
 /** 繰り返しの設定画面（名前・時間・優先度・曜日・時刻） */
 function openRecurEdit(id) {
   var r = ruleOf(id); if (!r) return;
-  RE = { id: id, name: r.name, est: Math.round(r.estimate * 60), pri: r.priority, type: r.type, dows: (r.dows || []).slice(), mday: r.mday, time: r.time || '' };
+  RE = { id: id, name: r.name, est: Math.round(r.estimate * 60), pri: r.priority, type: r.type, dows: (r.dows || []).slice(), mday: r.mday, time: r.time || '',
+        kids: JSON.parse(JSON.stringify(r.children || [])), under: null };
   renderRecurEdit();
 }
 function renderRecurEdit() {
@@ -1930,19 +2049,45 @@ function renderRecurEdit() {
     h += '<div class="stepper"><button class="chip step" onclick="RE.mday=Math.max(1,RE.mday-1);renderRecurEdit()">−1日</button>'
       + '<div class="stepval">毎月 ' + RE.mday + '日</div><button class="chip step" onclick="RE.mday=Math.min(31,RE.mday+1);renderRecurEdit()">＋1日</button></div>';
   }
-  h += '<label>締め切りの時刻</label><input id="rTime" type="time" class="dateinput" value="' + esc(RE.time) + '" onchange="RE.time=this.value">'
+  h += '<label>締め切りの時刻</label><input id="rTime" type="time" class="dateinput" value="' + esc(RE.time) + '" onchange="RE.time=this.value">';
+  // 毎回つける子タスク
+  h += '<div class="clabel" style="margin-top:16px">毎回つける子タスク</div><div class="tmpl">';
+  if (!RE.kids.length) h += '<p class="muted" style="margin:4px 0">まだありません。下から追加できます。</p>';
+  RE.kids.forEach(function (c, i) {
+    h += '<div class="trow"><span class="tn">' + esc(c.name) + '</span><span class="muted">' + (c.estimate ? fmtH(c.estimate) : '') + '</span>'
+      + '<button class="mini' + (RE.under === i ? ' on' : '') + '" onclick="RE.under=(RE.under===' + i + '?null:' + i + ');renderRecurEdit()">＋孫</button>'
+      + '<button class="mini" style="color:var(--red)" onclick="RE.kids.splice(' + i + ',1);RE.under=null;renderRecurEdit()">×</button></div>';
+    (c.children || []).forEach(function (g, j) {
+      h += '<div class="trow sub"><span class="tn">└ ' + esc(g.name) + '</span><span class="muted">' + (g.estimate ? fmtH(g.estimate) : '') + '</span>'
+        + '<button class="mini" style="color:var(--red)" onclick="RE.kids[' + i + '].children.splice(' + j + ',1);renderRecurEdit()">×</button></div>';
+    });
+  });
+  var underName = RE.under !== null && RE.kids[RE.under] ? RE.kids[RE.under].name : null;
+  h += '</div><div class="muted" style="margin-top:6px;font-size:12px">' + (underName ? '「' + esc(underName) + '」の下に孫を追加' : '子タスクを追加') + '</div>'
+    + '<div class="cinput" style="margin-top:4px"><input id="rKid" placeholder="名前" autocomplete="off" onkeydown="if(event.key===\'Enter\'&&!event.isComposing&&event.keyCode!==229){event.preventDefault();reAddKid()}">'
+    + '<input id="rKidMin" type="number" min="0" step="5" inputmode="numeric" placeholder="分" style="width:70px;flex:none">'
+    + '<button class="btn sub" onclick="reAddKid()">追加</button></div>'
     + '<div class="btns"><button class="btn sub" onclick="closeModal()">やめる</button><button class="btn" onclick="saveRecurEdit()">まとめて保存</button></div>'
     + '<div class="btns"><button class="btn danger" onclick="stopRecur(' + RE.id + ')">この繰り返しをやめる</button></div>';
   var y = $('panel').scrollTop;
   openPanel(h);
   $('panel').scrollTop = y;
 }
+function reAddKid() {
+  var n = $('rKid').value.trim(); if (!n) return;
+  var it = { name: n, estimate: (+$('rKidMin').value || 0) / 60, priority: RE.pri, children: [] };
+  RE.name = $('rName').value.trim() || RE.name; RE.est = +$('rEst').value || 0; RE.time = $('rTime').value;
+  if (RE.under !== null && RE.kids[RE.under]) (RE.kids[RE.under].children = RE.kids[RE.under].children || []).push(it);
+  else RE.kids.push(it);
+  renderRecurEdit();
+  setTimeout(function () { var k = $('rKid'); if (k && !('ontouchstart' in window)) k.focus(); }, 30);
+}
 function reToggleDow(d) { var i = RE.dows.indexOf(d); if (i >= 0) RE.dows.splice(i, 1); else RE.dows.push(d); renderRecurEdit(); }
 function saveRecurEdit() {
   RE.name = $('rName').value.trim(); RE.est = +$('rEst').value || 0; RE.time = $('rTime').value;
   if (!RE.name) { toast('タスク名を入れてください'); return; }
   if (RE.type === 'weekly' && !RE.dows.length) { toast('曜日を選んでください'); return; }
-  call('updateRecurring', [RE.id, { name: RE.name, estimate: RE.est / 60, priority: RE.pri, time: RE.time, type: RE.type, dows: RE.dows, mday: RE.mday }],
+  call('updateRecurring', [RE.id, { name: RE.name, estimate: RE.est / 60, priority: RE.pri, time: RE.time, type: RE.type, dows: RE.dows, mday: RE.mday, children: RE.kids }],
     function () { closeModal(); toast('今後の回もまとめて変更しました'); });
 }
 function stopRecur(id) {
