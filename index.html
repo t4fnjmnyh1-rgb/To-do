@@ -207,6 +207,27 @@
   .same { flex:none; border:1px solid var(--line); background:var(--card); color:var(--sub); border-radius:999px; font-size:12px; padding:4px 9px; }
   .lbar { height:5px; background:var(--soft); border-radius:3px; overflow:hidden; margin-top:5px; max-width:240px; }
   .lbar i { display:block; height:100%; background:var(--blue); }
+  .pribar { display:flex; height:10px; border-radius:5px; overflow:hidden; gap:2px; margin:10px 0 4px; }
+  .pribar i { background:var(--pfg); }
+  .prirow { display:flex; align-items:center; gap:10px; padding:9px 0; border-bottom:1px solid var(--line); }
+  .prirow:last-child { border-bottom:none; }
+  .prirow .prio { width:72px; justify-content:flex-start; }
+  .prirow .main { flex:1; min-width:0; }
+  .prirow .lbar { max-width:none; margin-top:0; }
+  .prirow .lbar i { background:var(--pfg); }
+  .prinum { text-align:right; flex:none; min-width:76px; }
+  .prinum b { display:block; font-size:15px; }
+  .prinum span { font-size:11px; }
+  .pathlink { display:flex; justify-content:space-between; align-items:center; gap:8px; width:100%; margin-top:7px; padding:7px 10px;
+              border:1px dashed var(--line); border-radius:8px; background:transparent; color:var(--sub); font-size:12px; text-align:left; }
+  .pathlink span { color:var(--blue); font-weight:700; white-space:nowrap; flex:none; }
+  .panel .pathlink { margin:0 0 6px; }
+  .backlink { background:none; border:none; color:var(--blue); font-size:14px; font-weight:700; padding:2px 4px 10px; }
+  .famsum b { display:block; font-size:18px; margin:2px 0 6px; }
+  .famsum .meta { display:flex; flex-wrap:wrap; gap:5px; }
+  .row.jump { animation:jump 1.6s ease-out; }
+  @keyframes jump { 0%, 40% { background:var(--orange-soft); } 100% { background:transparent; } }
+  @media (prefers-reduced-motion: reduce) { .row.jump { animation:none; background:var(--orange-soft); } }
   .showdone { display:flex; align-items:center; gap:8px; font-size:14px; color:var(--sub); margin:6px 4px; }
 
   /* ---- やる順 ---- */
@@ -840,7 +861,7 @@ var C = { open: false, parentId: null, estimate: null, deadline: '', dlKey: '', 
           repeat: '', dows: [], mday: 1 };
 var pending = [], tempSeq = 0, reqSeq = 0, appliedSeq = 0, busyN = 0;
 var calMonth = null, selDay = null, capTimers = {}, query = '', SR = null;
-var logDate = null, logNight = false, LS = null, ACT = {};
+var logDate = null, logNight = false, LS = null, ACT = {}, FOCUS = null;
 
 function $(id) { return document.getElementById(id); }
 function esc(s) {
@@ -893,6 +914,7 @@ function callRaw(fn, args, ok, ng) {
 function call(fn, args, after) { callRaw(fn, args, after); }
 
 function setTab(t) {
+  FOCUS = null;
   tab = t; render(); window.scrollTo(0, 0);
   if (t === 'log' && (logDate || S.today) === S.today) {
     // 記録は今の時刻のあたりを表示する
@@ -1201,6 +1223,8 @@ function viewLoad() {
   });
   h += '</div>';
 
+  h += priorityCard();
+
   h += '<div class="card"><div class="inline"><span>今日あと</span>'
     + '<input type="number" min="0" step="0.5" value="' + todayLeft + '" onchange="setTodayLeft(this.value)">'
     + '<span>時間使える</span></div></div>';
@@ -1220,6 +1244,45 @@ function viewLoad() {
   if (L.noDeadline) h += '<p class="muted">締め切りなし：' + fmtH(L.noDeadline) + '</p>';
   h += '<p class="muted">累計＝その日までに終わらせる必要がある時間。使える＝今日の残り＋その日までの作業可能時間（⚙︎で設定）</p></div>';
   return h;
+}
+
+/** 優先度ごとの残り時間（まだ終わっていない一番下のタスクの見積もりを合計） */
+function priorityStats() {
+  var w7 = addDays(S.today, 6), st = {};
+  [5, 4, 3, 2, 1].forEach(function (p) { st[p] = { all: 0, today: 0, week: 0, n: 0, noEst: 0 }; });
+  M.openLeaves().forEach(function (t) {
+    if (t.temp) return;
+    var x = st[t.priority] || st[3], e = M.effDeadline(t);
+    x.all += t.estimate; x.n++;
+    if (!t.estimate) x.noEst++;
+    if (e.date && e.date <= S.today) x.today += t.estimate;
+    if (e.date && e.date <= w7) x.week += t.estimate;
+  });
+  return st;
+}
+function priorityCard() {
+  var st = priorityStats(), total = 0, max = 0;
+  [5, 4, 3, 2, 1].forEach(function (p) { total += st[p].all; max = Math.max(max, st[p].all); });
+  var h = '<div class="card"><div class="logtotal"><b style="font-size:15px">優先度別の残り時間</b><span class="muted">合計 ' + fmtH(total) + '</span></div>';
+  if (!total && ![5, 4, 3, 2, 1].some(function (p) { return st[p].n; })) return h + '<p class="muted" style="margin:6px 0 0">未完了のタスクはありません</p></div>';
+  if (total) {
+    h += '<div class="pribar">';
+    [5, 4, 3, 2, 1].forEach(function (p) { if (st[p].all) h += '<i class="q' + p + '" style="flex:' + st[p].all + '"></i>'; });
+    h += '</div>';
+  }
+  [5, 4, 3, 2, 1].forEach(function (p) {
+    var x = st[p];
+    if (!x.n) return;
+    var sub = [];
+    if (x.today) sub.push('今日まで ' + fmtH(x.today));
+    if (x.week) sub.push('7日以内 ' + fmtH(x.week));
+    if (x.noEst) sub.push('<span class="over">見積なし ' + x.noEst + '件</span>');
+    h += '<div class="prirow">' + priBadge(p)
+      + '<div class="main"><div class="lbar q' + p + '"><i style="width:' + (max ? Math.round(x.all / max * 100) : 0) + '%"></i></div>'
+      + (sub.length ? '<div class="muted" style="font-size:12px;margin-top:3px">' + sub.join('　') + '</div>' : '') + '</div>'
+      + '<div class="prinum"><b>' + fmtH(x.all) + '</b><span class="muted">' + x.n + '件</span></div></div>';
+  });
+  return h + '</div>';
 }
 
 function setTodayLeft(v) { todayLeft = Math.max(0, parseFloat(v) || 0); render(); }
@@ -1338,7 +1401,9 @@ function taskLine(t, meta, tags) {
   var path = M.path(t);
   return '<div class="row p' + t.priority + '"><input type="checkbox" class="chk" onchange="toggleDone(' + t.id + ',this.checked)" aria-label="完了">'
     + '<div class="main" onclick="openEdit(' + t.id + ')"><div class="nm">' + esc(t.name) + '</div>'
-    + '<div class="meta">' + priBadge(t.priority) + tags + meta + (path ? pill(esc(path), 'inherit') : '') + '</div></div></div>';
+    + '<div class="meta">' + priBadge(t.priority) + tags + meta + '</div>'
+    + (path ? '<button class="pathlink" onclick="event.stopPropagation();showFamily(' + t.id + ')">' + esc(path) + '<span>全体を見る ›</span></button>' : '')
+    + '</div></div>';
 }
 
 function selectDay(d) {
@@ -1513,7 +1578,40 @@ function copyLog() {
 }
 
 // ---- ツリー ----
+/** 親タスクの全体（子・孫すべて）を表示する */
+function showFamily(id) {
+  var t = M.byId[id]; if (!t) return;
+  var root = t;
+  while (root.parentId !== null && M.byId[root.parentId]) root = M.byId[root.parentId];
+  FOCUS = { root: root.id, target: id, from: tab };
+  tab = 'tree';
+  render();
+  window.scrollTo(0, 0);
+  setTimeout(function () {
+    var r = document.getElementById('row-' + id);
+    if (r) { r.scrollIntoView({ block: 'center' }); r.classList.add('jump'); }
+  }, 30);
+}
+function backFromFocus() {
+  var from = FOCUS ? FOCUS.from : 'tree';
+  FOCUS = null; tab = from; render();
+}
+function viewFocus() {
+  var r = M.byId[FOCUS.root];
+  if (!r) { FOCUS = null; return viewTree(); }
+  var names = { cal: 'カレンダー', plan: 'やる順', load: '負荷', log: '記録', tree: 'ツリー' };
+  var all = M.hours(r, false), rest = M.hours(r, true), leaves = M.leaves(r);
+  var doneN = leaves.filter(function (l) { return M.closed(l); }).length;
+  var h = '<button class="backlink" onclick="backFromFocus()">‹ ' + (names[FOCUS.from] || 'ツリー') + 'に戻る</button>'
+    + '<div class="card famsum"><div class="muted">親タスクの全体</div><b>' + esc(r.name) + '</b>'
+    + '<div class="meta">' + priBadge(r.priority) + dlPill(r, M.closed(r))
+    + pill('完了 ' + doneN + ' / ' + leaves.length + '件') + pill('残り ' + fmtH(rest) + ' / ' + fmtH(all)) + '</div>'
+    + '<div class="progress" style="max-width:none"><i style="width:' + (all ? Math.round((all - rest) / all * 100) : 0) + '%"></i></div></div>'
+    + '<div class="card group">' + treeRow(r, 0) + '</div>';
+  return h;
+}
 function viewTree() {
+  if (FOCUS) return viewFocus();
   return '<div class="search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>'
     + '<input id="q" type="search" placeholder="タスクを検索" autocomplete="off" value="' + esc(query) + '" oninput="onSearch(this.value)">'
     + '<button class="link" id="qClear" onclick="clearSearch()"' + (query ? '' : ' style="display:none"') + '>クリア</button></div>'
@@ -1585,7 +1683,7 @@ function treeRow(t, depth) {
     var all = M.hours(t, false), rest = M.hours(t, true);
     progress = '<div class="progress"><i style="width:' + (all ? Math.round((all - rest) / all * 100) : 0) + '%"></i></div>';
   }
-  var isOpen = SR ? true : !collapsed[t.id];
+  var isOpen = (SR || FOCUS) ? true : !collapsed[t.id];
   var isTarget = C.open && C.parentId === t.id;
   var lvIdx = LV.indexOf(t.level);
   var h = '<div id="row-' + t.id + '" class="row p' + t.priority + ' lv' + depth + (depth ? ' child' : '') + (done ? ' done' : '') + (isTarget ? ' target' : '') + '" ' + indent + '>'
@@ -1595,7 +1693,7 @@ function treeRow(t, depth) {
     + (lvIdx < 2 && !done ? '<button class="mini' + (isTarget ? ' on' : '') + '" onclick="openComposer(' + t.id + ')">＋' + LV[lvIdx + 1] + '</button>' : '')
     + '</div>';
   if (!leaf && isOpen) {
-    M.kids[t.id].filter(function (c) { return SR ? SR.show[c.id] : (showDone || !M.closed(c)); })
+    M.kids[t.id].filter(function (c) { return FOCUS ? true : SR ? SR.show[c.id] : (showDone || !M.closed(c)); })
       .forEach(function (c) { h += treeRow(c, depth + 1); });
   }
   return h;
@@ -1704,7 +1802,7 @@ function openEdit(id) {
   var leaf = M.isLeaf(t), inh = M.effDeadline(t);
   var pri = [5, 4, 3, 2, 1].map(function (n) { return '<option value="' + n + '"' + (n === t.priority ? ' selected' : '') + '>' + PRI_LABEL[n] + '</option>'; }).join('');
   openPanel('<h3>タスクを編集</h3>'
-    + (M.path(t) ? '<div class="muted">' + esc(M.path(t)) + '</div>' : '')
+    + (M.path(t) ? '<button class="pathlink" onclick="closeModal();showFamily(' + id + ')">' + esc(M.path(t)) + '<span>全体を見る ›</span></button>' : '')
     + '<label>タスク名</label><input id="eName" value="' + esc(t.name) + '">'
     + '<label>見積もり（分）</label>'
     + (leaf ? '<input id="eEst" type="number" min="0" step="5" inputmode="numeric" value="' + Math.round(t.estimate * 60) + '">'
