@@ -66,7 +66,7 @@
   /* ---- 下：タブ ---- */
   .tabs { position:fixed; left:0; right:0; bottom:0; z-index:6; height:var(--nav-h); display:flex; background:var(--card);
           border-top:1px solid var(--line); padding-bottom:env(safe-area-inset-bottom); }
-  .tab { flex:1; background:none; border:none; color:var(--faint); font-size:11px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; }
+  .tab { flex:1; min-width:0; background:none; border:none; color:var(--faint); font-size:10.5px; white-space:nowrap; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; }
   .tab svg { width:22px; height:22px; stroke:currentColor; fill:none; stroke-width:1.8; stroke-linecap:round; stroke-linejoin:round; }
   .tab.on { color:var(--blue); font-weight:700; }
   main { padding:14px 12px calc(var(--nav-h) + 90px); max-width:720px; margin:0 auto; }
@@ -246,6 +246,18 @@
   .trow:last-child { border-bottom:none; }
   .trow.sub { padding-left:16px; font-size:13px; }
   .trow .tn { flex:1; min-width:0; }
+  .overdue { margin-top:10px; border:1px solid var(--red); border-radius:12px; padding:6px 10px 2px; background:var(--red-soft); }
+  .ovhead { font-size:14px; font-weight:700; color:var(--red); padding:4px 0 2px; }
+  .overdue .row { border-bottom-color:color-mix(in srgb, var(--red) 25%, transparent); }
+  .whorow { display:flex; align-items:center; gap:6px; margin-top:8px; }
+  .whorow .chips { margin-top:0; flex-wrap:nowrap; overflow-x:auto; scrollbar-width:none; }
+  .whorow .chip { flex:none; }
+  .askhead { display:flex; align-items:center; gap:8px; margin-bottom:2px; }
+  .askhead b { flex:1; font-size:15px; }
+  .askrow::before { background:var(--blue) !important; }
+  .askrow.done::before { background:var(--line) !important; }
+  .answer { font-size:13px; color:var(--green); margin-top:4px; white-space:pre-wrap; }
+  body.on-ask #fab { display:none; }
   .showdone { display:flex; align-items:center; gap:8px; font-size:14px; color:var(--sub); margin:6px 4px; }
 
   /* ---- やる順 ---- */
@@ -343,6 +355,8 @@
     if (!db.generated) db.generated = {};
     if (!db.nextRecurId) db.nextRecurId = 1;
     if (!db.logs) db.logs = {};
+    if (!db.questions) db.questions = [];
+    if (!db.nextQid) db.nextQid = 1;
     return db;
   }
   function save(db) {
@@ -446,6 +460,7 @@
     return JSON.parse(JSON.stringify({
       recurring: db.recurring,
       logs: db.logs || {},
+      questions: db.questions || [],
       tasks: db.tasks.map(function (t) {
         return { id: t.id, parentId: t.parentId, level: t.level, name: t.name, estimate: t.estimate,
                  priority: t.priority, deadline: t.deadline, deadlineTime: t.deadlineTime || '', done: t.done, recurId: t.recurId || null, tmplId: t.tmplId || null };
@@ -475,6 +490,27 @@
 
   var api = {
     getData: function () { return finish(load()); },
+    // ---- 聞きたいこと ----
+    addQuestion: function (q) {
+      var db = load();
+      db.questions.push({ id: db.nextQid++, text: String(q.text || ''), who: String(q.who || ''), answer: '', done: false,
+        createdAt: new Date().toISOString(), doneAt: '' });
+      return finish(db);
+    },
+    updateQuestion: function (id, f) {
+      var db = load(), q = db.questions.filter(function (x) { return x.id === id; })[0];
+      if (!q) throw new Error('見つかりません');
+      if (f.text !== undefined) q.text = String(f.text);
+      if (f.who !== undefined) q.who = String(f.who);
+      if (f.answer !== undefined) q.answer = String(f.answer);
+      if (f.done !== undefined && !!f.done !== q.done) { q.done = !!f.done; q.doneAt = q.done ? new Date().toISOString() : ''; }
+      return finish(db);
+    },
+    deleteQuestion: function (id) {
+      var db = load();
+      db.questions = db.questions.filter(function (x) { return x.id !== id; });
+      return finish(db);
+    },
     /** 記録：date の start（"09:00"）から count 枠（15分ずつ）を entry で埋める。entry が null なら消す */
     setLog: function (date, start, count, entry) {
       var db = load();
@@ -621,6 +657,8 @@
       var db = JSON.parse(text);
       if (!db || !Array.isArray(db.tasks) || !db.settings) throw new Error('バックアップファイルの形式が違います');
       if (!db.logs) db.logs = {};
+      if (!db.questions) db.questions = [];
+      if (!db.nextQid) db.nextQid = db.questions.reduce(function (m, q) { return Math.max(m, q.id); }, 0) + 1;
       if (!db.recurring) db.recurring = [];
       if (!db.generated) db.generated = {};
       if (!db.nextRecurId) db.nextRecurId = db.recurring.reduce(function (m, r) { return Math.max(m, r.id); }, 0) + 1;
@@ -674,6 +712,7 @@
   <button class="tab" data-tab="tree" onpointerdown="tapTab(event,'tree')" onclick="tapTab(event,'tree')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h6M9 12h10M9 19h10M7 5v14"/></svg>ツリー</button>
   <button class="tab" data-tab="plan" onpointerdown="tapTab(event,'plan')" onclick="tapTab(event,'plan')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 6h10M10 12h10M10 18h10"/><path d="M4 6h1M4 12h1M4 18h1"/></svg>やる順</button>
   <button class="tab" data-tab="log" onpointerdown="tapTab(event,'log')" onclick="tapTab(event,'log')"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 7.5V12l3 2"/></svg>記録</button>
+  <button class="tab" data-tab="ask" onpointerdown="tapTab(event,'ask')" onclick="tapTab(event,'ask')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-8l-4 3v-3H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/><path d="M10 9.2a2 2 0 1 1 2.6 1.9c-.4.2-.6.5-.6.9v.4M12 14h.01"/></svg>聞くこと</button>
 </nav>
 <div id="composer" class="composer hidden">
   <div class="ctop"><div id="cTarget"></div><button class="link" onclick="closeComposer()">閉じる</button></div>
@@ -994,6 +1033,7 @@ var C = { open: false, parentId: null, estimate: null, deadline: '', dlKey: '', 
 var pending = [], tempSeq = 0, reqSeq = 0, appliedSeq = 0, busyN = 0;
 var calMonth = null, selDay = null, capTimers = {}, query = '', SR = null;
 var logDate = null, logNight = false, LS = null, ACT = {}, FOCUS = null;
+var AQ = { who: '', showDone: false };
 
 function $(id) { return document.getElementById(id); }
 function esc(s) {
@@ -1070,7 +1110,8 @@ function render() {
     b.classList.toggle('on', b.getAttribute('data-tab') === tab);
   });
   ACT = actualByTask(S.logs);
-  $('view').innerHTML = tab === 'load' ? viewLoad() : tab === 'cal' ? viewCal() : tab === 'tree' ? viewTree() : tab === 'log' ? viewLog() : viewPlan();
+  $('view').innerHTML = tab === 'load' ? viewLoad() : tab === 'cal' ? viewCal() : tab === 'tree' ? viewTree() : tab === 'log' ? viewLog() : tab === 'ask' ? viewAsk() : viewPlan();
+  document.body.classList.toggle('on-ask', tab === 'ask');
   document.body.classList.toggle('on-log', tab === 'log');
   renderMeter();
   if (C.open) renderComposer();
@@ -1330,7 +1371,12 @@ function leftToday(time) {
   var p = time.split(':'), d = new Date(), end = new Date(d.getFullYear(), d.getMonth(), d.getDate(), +p[0], +p[1]);
   return (end - d) / 3600000;
 }
-function dlText(date, time) { return dayLabel(date) + (time ? ' ' + time : ''); }
+/** 締め切りの表示：今日・明日でも日付まで出す（例：今日 10/18(日) 17:00） */
+function dlText(date, time) {
+  var dt = toDate(date), md = (dt.getUTCMonth() + 1) + '/' + dt.getUTCDate() + '(' + W[dt.getUTCDay()] + ')';
+  var rel = date === S.today ? '今日 ' : date === addDays(S.today, 1) ? '明日 ' : '';
+  return rel + md + (time ? ' ' + time : '');
+}
 function dlPill(t, done) {
   var dl = M.effDeadline(t);
   if (!dl.date) return '';
@@ -1509,9 +1555,15 @@ function viewCal() {
  * 2. 重要度（優先度）が高いもの
  * 3. 同じ重要度の中では締め切りが近いもの（時刻まで見る）
  */
+function dueGroup(e) {
+  if (!e.date) return 2;
+  if (isPast(e.date, e.time)) return 0;      // 期限切れ
+  if (e.date === S.today) return 1;          // 今日まで
+  return 2;
+}
 function calOrder(a, b) {
   var ea = M.effDeadline(a), eb = M.effDeadline(b);
-  var ta = ea.date && ea.date <= S.today ? 0 : 1, tb = eb.date && eb.date <= S.today ? 0 : 1;
+  var ta = dueGroup(ea), tb = dueGroup(eb);
   if (ta !== tb) return ta - tb;
   if (a.priority !== b.priority) return b.priority - a.priority;
   var ka = ea.date ? ea.date + ' ' + (ea.time || '99:99') : '9999', kb = eb.date ? eb.date + ' ' + (eb.time || '99:99') : '9999';
@@ -1523,6 +1575,14 @@ function dayDetail(d, ctx) {
   var dt = toDate(d);
   var title = (dt.getUTCMonth() + 1) + '月' + dt.getUTCDate() + '日(' + W[dt.getUTCDay()] + ')' + (d === S.today ? '・今日' : '');
   var h = '<div class="card"><b>' + title + '</b>';
+  // 今日の欄の一番上に、期限が過ぎたタスクをすべて出す
+  var overdue = d === S.today ? M.openLeaves().filter(function (t) { var e = M.effDeadline(t); return !t.temp && isPast(e.date, e.time); }).sort(calOrder) : [];
+  var overIds = {};
+  if (overdue.length) {
+    h += '<div class="overdue"><div class="ovhead">⚠ 期限が過ぎています（' + overdue.length + '件・' + fmtH(overdue.reduce(function (s, t) { return s + t.estimate; }, 0)) + '）</div>';
+    overdue.forEach(function (t) { overIds[t.id] = 1; h += taskLine(t, pill(fmtH(t.estimate)) + dlPill(t, false), ''); });
+    h += '</div>';
+  }
   if (!past) {
     var cap = d === S.today ? todayLeft : capOf(d, S.settings);
     var o = S.settings.overrides || {};
@@ -1542,7 +1602,7 @@ function dayDetail(d, ctx) {
     var free = round2(cap - used);
     h += '<div class="daysum ' + (cap === 0 ? '' : free <= 0 ? 'full' : 'okbg') + '">やる予定 <b>' + fmtH(used) + '</b> ／ 使える <b>' + fmtH(cap) + '</b>'
       + (cap === 0 ? '' : free > 0 ? '　あと' + fmtH(free) + '空き' : '　いっぱい') + '</div>';
-    var items = (ctx.dayMap[d] ? ctx.dayMap[d].items : []).slice().sort(function (a, b) { return calOrder(a.t, b.t); });
+    var items = (ctx.dayMap[d] ? ctx.dayMap[d].items : []).filter(function (x) { return !overIds[x.t.id]; }).sort(function (a, b) { return calOrder(a.t, b.t); });
     if (items.length) {
       h += '<div class="clabel">この日にやる予定</div>';
       items.forEach(function (x) {
@@ -1568,7 +1628,7 @@ function dayDetail(d, ctx) {
       else if (!f) st = '';
       else if (f > d) st = pill(f === '9999-12-31' ? '入りきらない' : dayLabel(f) + 'に終わる予定', 'late');
       else st = pill(dayLabel(f) + 'に終わる予定', 'good');
-      h += taskLine(t, pill(fmtH(t.estimate)) + (et.time ? pill(et.time + 'まで', 'info') : ''), st);
+      h += taskLine(t, pill(fmtH(t.estimate)) + dlPill(t, false), st);
     });
   }
   if (past && !dls.length) h += '<p class="muted">過ぎた日です</p>';
@@ -1755,6 +1815,90 @@ function copyLog() {
   lines.push('合計 ' + fmtH(logSummary(day).total));
   if (day.memo) lines.push('', '振り返り：', day.memo);
   copyText(lines.join('\n'));
+}
+
+// ---- 聞きたいこと（ToDoとは別のメモ） ----
+function askWhoList() {
+  var seen = {}, out = [];
+  (S.questions || []).slice().reverse().forEach(function (q) { if (q.who && !seen[q.who]) { seen[q.who] = 1; out.push(q.who); } });
+  return out.slice(0, 8);
+}
+function viewAsk() {
+  var qs = S.questions || [], open = qs.filter(function (q) { return !q.done; }), done = qs.filter(function (q) { return q.done; });
+  var who = askWhoList();
+  var h = '<div class="card quick"><div class="qlabel">聞きたいことをメモ</div>'
+    + '<div class="qrow"><input id="askText" type="text" enterkeyhint="done" autocomplete="off" placeholder="聞きたいことを入れてEnter" onkeydown="if(event.key===\'Enter\'&&!event.isComposing&&event.keyCode!==229){event.preventDefault();addAsk()}">'
+    + '<button class="btn" onclick="addAsk()">追加</button></div>'
+    + '<div class="whorow"><span class="muted">誰に：</span><div class="chips">'
+    + '<button class="chip' + (!AQ.who ? ' on' : '') + '" onclick="setAskWho(\'\')">指定なし</button>';
+  who.forEach(function (w, i) { h += '<button class="chip' + (AQ.who === w ? ' on' : '') + '" onclick="setAskWho(window._who[' + i + '])">' + esc(w) + '</button>'; });
+  window._who = who;
+  h += '<button class="chip" onclick="newAskWho()">＋相手</button></div></div></div>';
+
+  if (!open.length) h += '<div class="card"><p class="muted" style="margin:0">聞きたいことはありません。思いついたら上に入れておきましょう。</p></div>';
+  // 相手ごとにまとめる
+  var groups = {}, order = [];
+  open.forEach(function (q) { var k = q.who || ''; if (!groups[k]) { groups[k] = []; order.push(k); } groups[k].push(q); });
+  order.sort(function (a, b) { return a === '' ? 1 : b === '' ? -1 : 0; });
+  order.forEach(function (k, gi) {
+    h += '<div class="card"><div class="askhead"><b>' + (k ? esc(k) + 'に聞く' : '相手を決めていない') + '</b><span class="muted">' + groups[k].length + '件</span>'
+      + '<button class="mini" onclick="copyAsk(' + gi + ')">コピー</button></div>';
+    groups[k].forEach(function (q) { h += askRow(q); });
+    h += '</div>';
+  });
+  window._askGroups = order.map(function (k) { return groups[k]; });
+  if (done.length) {
+    h += '<button class="link" style="margin:4px 4px 10px" onclick="AQ.showDone=!AQ.showDone;render()">' + (AQ.showDone ? '聞いたものを隠す' : '聞いたもの（' + done.length + '件）を表示') + '</button>';
+    if (AQ.showDone) {
+      h += '<div class="card">';
+      done.slice().reverse().forEach(function (q) { h += askRow(q); });
+      h += '</div>';
+    }
+  }
+  return h;
+}
+function askRow(q) {
+  return '<div class="row askrow' + (q.done ? ' done' : '') + '"><input type="checkbox" class="chk" ' + (q.done ? 'checked' : '') + ' onchange="doneAsk(' + q.id + ',this.checked)" aria-label="聞いた">'
+    + '<div class="main" onclick="editAsk(' + q.id + ')"><div class="nm">' + esc(q.text) + '</div>'
+    + (q.answer ? '<div class="answer">→ ' + esc(q.answer) + '</div>' : '')
+    + (q.done && q.who ? '<div class="meta">' + pill(esc(q.who)) + '</div>' : '') + '</div></div>';
+}
+function setAskWho(w) { AQ.who = w || ''; render(); }
+function newAskWho() {
+  var w = prompt('誰に聞きますか？（名前）');
+  if (w && w.trim()) { AQ.who = w.trim(); render(); }
+}
+function addAsk() {
+  var v = ($('askText').value || '').trim();
+  if (!v) { $('askText').focus(); return; }
+  callRaw('addQuestion', [{ text: v, who: AQ.who }], function () {
+    toast('メモしました');
+    setTimeout(function () { var i = $('askText'); if (i) i.focus(); }, 30);
+  });
+}
+function doneAsk(id, v) { callRaw('updateQuestion', [id, { done: v }], function () { toast(v ? '聞いたにしました' : '戻しました'); }); }
+function editAsk(id) {
+  var q = (S.questions || []).filter(function (x) { return x.id === id; })[0]; if (!q) return;
+  openPanel('<h3>聞きたいこと</h3>'
+    + '<label>内容</label><textarea id="aqText" style="min-height:80px">' + esc(q.text) + '</textarea>'
+    + '<label>誰に</label><input id="aqWho" value="' + esc(q.who || '') + '" placeholder="空欄でもOK">'
+    + '<label>聞いた答え（メモ）</label><textarea id="aqAns" style="min-height:80px" placeholder="答えをメモしておけます">' + esc(q.answer || '') + '</textarea>'
+    + '<label class="showdone" style="margin:12px 0 0"><input type="checkbox" class="chk" id="aqDone" ' + (q.done ? 'checked' : '') + '>聞いた</label>'
+    + '<div class="btns"><button class="btn sub" onclick="closeModal()">やめる</button><button class="btn" onclick="saveAsk(' + id + ')">保存</button></div>'
+    + '<div class="btns"><button class="btn danger" onclick="delAsk(' + id + ')">削除</button></div>');
+}
+function saveAsk(id) {
+  var t = $('aqText').value.trim(); if (!t) { toast('内容を入れてください'); return; }
+  callRaw('updateQuestion', [id, { text: t, who: $('aqWho').value.trim(), answer: $('aqAns').value.trim(), done: $('aqDone').checked }],
+    function () { closeModal(); toast('保存しました'); });
+}
+function delAsk(id) {
+  if (!confirm('この聞きたいことを削除しますか？')) return;
+  callRaw('deleteQuestion', [id], function () { closeModal(); toast('削除しました'); });
+}
+function copyAsk(gi) {
+  var g = window._askGroups[gi] || [];
+  copyText(g.map(function (q) { return '・' + q.text; }).join('\n'));
 }
 
 // ---- ツリー ----
