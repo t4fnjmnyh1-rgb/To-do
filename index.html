@@ -1503,6 +1503,21 @@ function viewCal() {
   return h + dayDetail(selDay, ctx);
 }
 
+/**
+ * カレンダーでの並び順
+ * 1. 締め切りが今日（または過ぎている）もの
+ * 2. 重要度（優先度）が高いもの
+ * 3. 同じ重要度の中では締め切りが近いもの（時刻まで見る）
+ */
+function calOrder(a, b) {
+  var ea = M.effDeadline(a), eb = M.effDeadline(b);
+  var ta = ea.date && ea.date <= S.today ? 0 : 1, tb = eb.date && eb.date <= S.today ? 0 : 1;
+  if (ta !== tb) return ta - tb;
+  if (a.priority !== b.priority) return b.priority - a.priority;
+  var ka = ea.date ? ea.date + ' ' + (ea.time || '99:99') : '9999', kb = eb.date ? eb.date + ' ' + (eb.time || '99:99') : '9999';
+  if (ka !== kb) return ka < kb ? -1 : 1;
+  return a.id - b.id;
+}
 function dayDetail(d, ctx) {
   var past = d < S.today;
   var dt = toDate(d);
@@ -1527,7 +1542,7 @@ function dayDetail(d, ctx) {
     var free = round2(cap - used);
     h += '<div class="daysum ' + (cap === 0 ? '' : free <= 0 ? 'full' : 'okbg') + '">やる予定 <b>' + fmtH(used) + '</b> ／ 使える <b>' + fmtH(cap) + '</b>'
       + (cap === 0 ? '' : free > 0 ? '　あと' + fmtH(free) + '空き' : '　いっぱい') + '</div>';
-    var items = ctx.dayMap[d] ? ctx.dayMap[d].items : [];
+    var items = (ctx.dayMap[d] ? ctx.dayMap[d].items : []).slice().sort(function (a, b) { return calOrder(a.t, b.t); });
     if (items.length) {
       h += '<div class="clabel">この日にやる予定</div>';
       items.forEach(function (x) {
@@ -1536,9 +1551,7 @@ function dayDetail(d, ctx) {
       });
     }
   }
-  var dls = (ctx.dlMap[d] || []).slice().sort(function (a, b) {
-    return (M.effDeadline(a).time || '99:99') < (M.effDeadline(b).time || '99:99') ? -1 : 1;
-  });
+  var dls = (ctx.dlMap[d] || []).slice().sort(calOrder);
   function lateOf(t) { var e = M.effDeadline(t); return past || isPast(e.date, e.time) || ctx.fin[t.id] > d; }
   if (dls.length) {
     var lateN = dls.filter(lateOf).length;
