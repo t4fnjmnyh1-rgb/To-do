@@ -48,6 +48,11 @@
   .today b { color:var(--ink); font-size:17px; margin-right:6px; }
   .icon { background:none; border:none; font-size:20px; padding:4px 6px; color:var(--sub); }
   .meter { margin-top:8px; }
+  .top { gap:8px; }
+  .qswitch { display:flex; margin-left:auto; background:var(--soft); border:1px solid var(--line); border-radius:999px; padding:2px; }
+  .qs { border:none; background:transparent; color:var(--sub); font-size:13px; font-weight:700; padding:7px 13px; border-radius:999px; touch-action:manipulation; }
+  .qs.on { background:var(--blue); color:#fff; }
+  .tab { touch-action:manipulation; }
   .meter-line { display:flex; justify-content:space-between; align-items:baseline; font-size:13px; color:var(--sub); }
   .meter-line .big { font-size:22px; font-weight:700; color:var(--ink); }
   .meter-line .big small { font-size:13px; font-weight:400; color:var(--sub); margin-left:2px; }
@@ -228,6 +233,7 @@
   .row.jump { animation:jump 1.6s ease-out; }
   @keyframes jump { 0%, 40% { background:var(--orange-soft); } 100% { background:transparent; } }
   @media (prefers-reduced-motion: reduce) { .row.jump { animation:none; background:var(--orange-soft); } }
+  .recurnote { margin-top:14px; padding:8px 10px; border-radius:8px; background:var(--blue-soft); color:var(--blue); font-size:13px; }
   .showdone { display:flex; align-items:center; gap:8px; font-size:14px; color:var(--sub); margin:6px 4px; }
 
   /* ---- やる順 ---- */
@@ -429,6 +435,45 @@
         priority: Number(r.priority) || 3, type: r.type, dows: r.dows || [], mday: Number(r.mday) || 1, time: r.time || '', start: todayStr() });
       return finish(db);
     },
+    /**
+     * 繰り返しをまとめて変更する。まだ終わっていない今日以降の回にも反映する。
+     * 曜日や頻度を変えたときは、今日以降の未完了の回（分解していないもの）を作り直す。
+     */
+    updateRecurring: function (id, r) {
+      var db = load(), today = todayStr();
+      var rule = db.recurring.filter(function (x) { return x.id === id; })[0];
+      if (!rule) throw new Error('繰り返しが見つかりません');
+      var newType = r.type || rule.type, newDows = r.dows || rule.dows || [], newMday = Number(r.mday) || rule.mday;
+      var patternChanged = newType !== rule.type || newMday !== rule.mday
+        || JSON.stringify(newDows.slice().sort()) !== JSON.stringify((rule.dows || []).slice().sort());
+      rule.name = String(r.name); rule.estimate = Number(r.estimate) || 0; rule.priority = Number(r.priority) || 3;
+      rule.time = r.time || ''; rule.type = newType; rule.dows = newDows; rule.mday = newMday;
+      var hasKids = {};
+      db.tasks.forEach(function (t) { if (t.parentId !== null) hasKids[t.parentId] = true; });
+      var del = [];
+      db.tasks.forEach(function (t) {
+        if (t.recurId !== id || t.done || t.deadline < today) return;
+        if (patternChanged && !hasKids[t.id]) {
+          del.push(t.id);
+          delete db.generated[id + '|' + t.deadline];
+        } else {
+          t.name = rule.name; t.priority = rule.priority; t.deadlineTime = rule.time;
+          if (!hasKids[t.id]) t.estimate = rule.estimate;
+        }
+      });
+      if (patternChanged) {
+        // これから先の日付は、新しい条件で作り直す
+        Object.keys(db.generated).forEach(function (k) {
+          var p = k.split('|');
+          if (+p[0] === id && p[1] >= today) delete db.generated[k];
+        });
+        var kept = {};
+        db.tasks.forEach(function (t) { if (t.recurId === id && del.indexOf(t.id) < 0 && t.deadline >= today) kept[t.deadline] = true; });
+        Object.keys(kept).forEach(function (d) { db.generated[id + '|' + d] = 1; });
+        db.tasks = db.tasks.filter(function (t) { return del.indexOf(t.id) < 0; });
+      }
+      return finish(db);
+    },
     /** 繰り返しをやめる。まだ終わっていない今日以降の回も消す */
     deleteRecurring: function (id) {
       var db = load(), today = todayStr();
@@ -531,17 +576,22 @@
 <script>try { var th = localStorage.getItem('task-theme'); if (th === 'light' || th === 'dark') document.documentElement.setAttribute('data-theme', th); } catch (e) {}</script>
 <div id="busy"></div>
 <header>
-  <div class="top"><span class="today" id="todayLabel"></span><button class="icon" onclick="openSettings()" aria-label="設定">⚙︎</button></div>
+  <div class="top"><span class="today" id="todayLabel"></span>
+    <div class="qswitch">
+      <button class="qs" data-tab="log" onpointerdown="tapTab(event,'log')" onclick="tapTab(event,'log')">記録</button>
+      <button class="qs" data-tab="cal" onpointerdown="tapTab(event,'cal')" onclick="tapTab(event,'cal')">カレンダー</button>
+    </div>
+    <button class="icon" onclick="openSettings()" aria-label="設定">⚙︎</button></div>
   <div class="meter" id="meter"></div>
 </header>
 <main id="view"><div class="card muted">読み込み中…</div></main>
 <button id="fab" onclick="openComposer(null)" aria-label="タスクを追加">＋</button>
 <nav class="tabs">
-  <button class="tab" data-tab="load" onclick="setTab('load')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18a8 8 0 1 1 16 0"/><path d="M12 18l4-6"/></svg>負荷</button>
-  <button class="tab" data-tab="cal" onclick="setTab('cal')"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>カレンダー</button>
-  <button class="tab" data-tab="tree" onclick="setTab('tree')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h6M9 12h10M9 19h10M7 5v14"/></svg>ツリー</button>
-  <button class="tab" data-tab="plan" onclick="setTab('plan')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 6h10M10 12h10M10 18h10"/><path d="M4 6h1M4 12h1M4 18h1"/></svg>やる順</button>
-  <button class="tab" data-tab="log" onclick="setTab('log')"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 7.5V12l3 2"/></svg>記録</button>
+  <button class="tab" data-tab="load" onpointerdown="tapTab(event,'load')" onclick="tapTab(event,'load')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18a8 8 0 1 1 16 0"/><path d="M12 18l4-6"/></svg>負荷</button>
+  <button class="tab" data-tab="cal" onpointerdown="tapTab(event,'cal')" onclick="tapTab(event,'cal')"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>カレンダー</button>
+  <button class="tab" data-tab="tree" onpointerdown="tapTab(event,'tree')" onclick="tapTab(event,'tree')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h6M9 12h10M9 19h10M7 5v14"/></svg>ツリー</button>
+  <button class="tab" data-tab="plan" onpointerdown="tapTab(event,'plan')" onclick="tapTab(event,'plan')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 6h10M10 12h10M10 18h10"/><path d="M4 6h1M4 12h1M4 18h1"/></svg>やる順</button>
+  <button class="tab" data-tab="log" onpointerdown="tapTab(event,'log')" onclick="tapTab(event,'log')"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 7.5V12l3 2"/></svg>記録</button>
 </nav>
 <div id="composer" class="composer hidden">
   <div class="ctop"><div id="cTarget"></div><button class="link" onclick="closeComposer()">閉じる</button></div>
@@ -913,7 +963,16 @@ function callRaw(fn, args, ok, ng) {
 }
 function call(fn, args, after) { callRaw(fn, args, after); }
 
+/** タブを押したとき：1回で確実に切り替える（入力中なら先に保存してキーボードを閉じる） */
+function tapTab(e, t) {
+  if (e) e.preventDefault();
+  if (tab === t && !FOCUS) return;
+  setTab(t);
+}
 function setTab(t) {
+  var a = document.activeElement;
+  if (a && a.classList && a.classList.contains('lin')) logSave(a);
+  if (a && a.blur && a !== document.body) a.blur();
   FOCUS = null;
   tab = t; render(); window.scrollTo(0, 0);
   if (t === 'log' && (logDate || S.today) === S.today) {
@@ -925,7 +984,7 @@ function setTab(t) {
 function render() {
   M = buildModel(S.tasks.concat(pending));
   if (C.parentId !== null && !M.byId[C.parentId]) C.parentId = null;
-  Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (b) {
+  Array.prototype.forEach.call(document.querySelectorAll('.tab, .qs'), function (b) {
     b.classList.toggle('on', b.getAttribute('data-tab') === tab);
   });
   ACT = actualByTask(S.logs);
@@ -1551,6 +1610,7 @@ function logBlurOut() {
   setTimeout(function () {
     var a = document.activeElement;
     if (a && a.classList && a.classList.contains('lin')) return;
+    if (tab !== 'log') return;
     var y = window.scrollY; render(); window.scrollTo(0, y);
   }, 80);
 }
@@ -1812,10 +1872,82 @@ function openEdit(id) {
     + '<input id="eTm" type="time" class="dateinput" style="max-width:130px" value="' + esc(t.deadlineTime || '') + '"></div>'
     + '<div class="muted" style="margin-top:4px">時刻は空欄でもOKです</div>'
     + (!t.deadline && inh.date ? '<div class="muted">空欄のときは上の締切（' + dayLabel(inh.date) + '）を使います</div>' : '')
-    + '<div class="btns"><button class="btn sub" onclick="closeModal()">やめる</button><button class="btn" onclick="saveEdit(' + id + ')">保存</button></div>'
+    + (t.recurId && ruleOf(t.recurId)
+        ? '<div class="recurnote">🔁 繰り返しの予定です（' + recurWhen(ruleOf(t.recurId)) + '）</div>'
+          + '<div class="btns"><button class="btn sub" onclick="saveEdit(' + id + ')">この回だけ保存</button>'
+          + '<button class="btn" onclick="saveEditAll(' + id + ')">今後の回もまとめて保存</button></div>'
+          + '<div class="btns"><button class="btn sub" onclick="openRecurEdit(' + t.recurId + ')">繰り返しの設定（曜日など）を変える</button></div>'
+        : '<div class="btns"><button class="btn sub" onclick="closeModal()">やめる</button><button class="btn" onclick="saveEdit(' + id + ')">保存</button></div>')
     + '<div class="btns">'
     + (LV.indexOf(t.level) < 2 ? '<button class="btn sub" onclick="openComposer(' + id + ')">＋この下に追加</button>' : '')
     + '<button class="btn danger" onclick="removeTask(' + id + ')">削除</button></div>');
+}
+// ---- 繰り返しをまとめて編集 ----
+var RECUR_NAMES = { daily: '毎日', weekdays: '平日', weekly: '毎週', monthly: '毎月' };
+function ruleOf(id) { return (S.recurring || []).filter(function (r) { return r.id === id; })[0]; }
+function recurWhen(r) {
+  return RECUR_NAMES[r.type]
+    + (r.type === 'weekly' ? '（' + (r.dows || []).slice().sort(function (a, b) { return ((a + 6) % 7) - ((b + 6) % 7); }).map(function (d) { return W[d]; }).join('・') + '）' : '')
+    + (r.type === 'monthly' ? ' ' + r.mday + '日' : '')
+    + (r.time ? ' ' + r.time + 'まで' : '');
+}
+/** 編集画面の内容で、今後の回をまとめて変える（日付以外） */
+function saveEditAll(id) {
+  var t = M.byId[id], r = ruleOf(t.recurId), name = $('eName').value.trim();
+  if (!name) { toast('タスク名を入れてください'); return; }
+  var est = M.isLeaf(t) ? (parseFloat($('eEst').value) || 0) / 60 : r.estimate;
+  call('updateRecurring', [r.id, { name: name, estimate: est, priority: +$('ePri').value, time: $('eTm').value,
+    type: r.type, dows: r.dows, mday: r.mday }], function () { closeModal(); toast('今後の回もまとめて変更しました'); });
+}
+var RE = null;
+/** 繰り返しの設定画面（名前・時間・優先度・曜日・時刻） */
+function openRecurEdit(id) {
+  var r = ruleOf(id); if (!r) return;
+  RE = { id: id, name: r.name, est: Math.round(r.estimate * 60), pri: r.priority, type: r.type, dows: (r.dows || []).slice(), mday: r.mday, time: r.time || '' };
+  renderRecurEdit();
+}
+function renderRecurEdit() {
+  var h = '<h3>🔁 繰り返しをまとめて編集</h3><p class="muted" style="margin:0 0 4px">まだ終わっていない今日以降の回に反映されます。終わった回はそのままです。</p>'
+    + '<label>タスク名</label><input id="rName" value="' + esc(RE.name) + '" oninput="RE.name=this.value">'
+    + '<label>見積もり（分）</label><input id="rEst" type="number" min="0" step="5" inputmode="numeric" value="' + RE.est + '" oninput="RE.est=+this.value||0">'
+    + '<div class="clabel">優先度</div><div class="chips">';
+  [5, 4, 3, 2, 1].forEach(function (n) {
+    h += '<button class="chip prichip q' + n + (RE.pri === n ? ' on' : '') + '" onclick="RE.pri=' + n + ';renderRecurEdit()"><i></i>' + PRI_LABEL[n] + '</button>';
+  });
+  h += '</div><div class="clabel">繰り返し</div><div class="chips">';
+  ['daily', 'weekdays', 'weekly', 'monthly'].forEach(function (k) {
+    h += '<button class="chip' + (RE.type === k ? ' on' : '') + '" onclick="RE.type=\'' + k + '\';if(RE.type===\'weekly\'&&!RE.dows.length)RE.dows=[dow(S.today)];renderRecurEdit()">' + RECUR_NAMES[k] + '</button>';
+  });
+  h += '</div>';
+  if (RE.type === 'weekly') {
+    h += '<div class="chips">';
+    [1, 2, 3, 4, 5, 6, 0].forEach(function (d) {
+      h += '<button class="chip pri' + (RE.dows.indexOf(d) >= 0 ? ' on' : '') + '" onclick="reToggleDow(' + d + ')">' + W[d] + '</button>';
+    });
+    h += '</div>';
+  }
+  if (RE.type === 'monthly') {
+    h += '<div class="stepper"><button class="chip step" onclick="RE.mday=Math.max(1,RE.mday-1);renderRecurEdit()">−1日</button>'
+      + '<div class="stepval">毎月 ' + RE.mday + '日</div><button class="chip step" onclick="RE.mday=Math.min(31,RE.mday+1);renderRecurEdit()">＋1日</button></div>';
+  }
+  h += '<label>締め切りの時刻</label><input id="rTime" type="time" class="dateinput" value="' + esc(RE.time) + '" onchange="RE.time=this.value">'
+    + '<div class="btns"><button class="btn sub" onclick="closeModal()">やめる</button><button class="btn" onclick="saveRecurEdit()">まとめて保存</button></div>'
+    + '<div class="btns"><button class="btn danger" onclick="stopRecur(' + RE.id + ')">この繰り返しをやめる</button></div>';
+  var y = $('panel').scrollTop;
+  openPanel(h);
+  $('panel').scrollTop = y;
+}
+function reToggleDow(d) { var i = RE.dows.indexOf(d); if (i >= 0) RE.dows.splice(i, 1); else RE.dows.push(d); renderRecurEdit(); }
+function saveRecurEdit() {
+  RE.name = $('rName').value.trim(); RE.est = +$('rEst').value || 0; RE.time = $('rTime').value;
+  if (!RE.name) { toast('タスク名を入れてください'); return; }
+  if (RE.type === 'weekly' && !RE.dows.length) { toast('曜日を選んでください'); return; }
+  call('updateRecurring', [RE.id, { name: RE.name, estimate: RE.est / 60, priority: RE.pri, time: RE.time, type: RE.type, dows: RE.dows, mday: RE.mday }],
+    function () { closeModal(); toast('今後の回もまとめて変更しました'); });
+}
+function stopRecur(id) {
+  if (!confirm('この繰り返しをやめますか？まだ終わっていない今日以降の回も消えます。')) return;
+  call('deleteRecurring', [id], function () { closeModal(); toast('繰り返しをやめました'); });
 }
 function saveEdit(id) {
   var name = $('eName').value.trim();
@@ -1885,7 +2017,7 @@ if (window.google && google.script) {
         + (r.time ? ' ' + r.time + 'まで' : '');
       rh += '<div class="row"><div class="main"><div class="nm">🔁 ' + esc(r.name) + '</div><div class="meta">' + when
         + (r.estimate ? ' ・ ' + fmtH(r.estimate) : '') + ' ・ 優先度 ' + PRI_LABEL[r.priority] + '</div></div>'
-        + '<button class="mini" style="color:var(--red)" onclick="stopRecurring(' + r.id + ')">やめる</button></div>';
+        + '<button class="mini" onclick="openRecurEdit(' + r.id + ')">編集</button></div>';
     });
     $('panel').insertAdjacentHTML('beforeend', rh);
     $('panel').insertAdjacentHTML('beforeend',
