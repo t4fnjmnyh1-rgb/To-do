@@ -247,6 +247,8 @@
   .trow.sub { padding-left:16px; font-size:13px; }
   .trow .tn { flex:1; min-width:0; }
   .overdue { margin-top:10px; border:1px solid var(--red); border-radius:12px; padding:6px 10px 2px; background:var(--red-soft); }
+  .warnbox { border-color:var(--orange); background:var(--orange-soft); }
+  .warnbox .ovhead { color:var(--orange); }
   .ovhead { font-size:14px; font-weight:700; color:var(--red); padding:4px 0 2px; }
   .overdue .row { border-bottom-color:color-mix(in srgb, var(--red) 25%, transparent); }
   .whorow { display:flex; align-items:center; gap:6px; margin-top:8px; }
@@ -274,7 +276,10 @@
   .composer.hidden { display:none; }
   body.composing main { padding-bottom:64vh; }
   body.composing #fab { display:none; }
-  .ctop { display:flex; justify-content:space-between; align-items:flex-start; gap:8px; font-size:14px; }
+  .ctop { display:flex; justify-content:space-between; align-items:center; gap:8px; font-size:14px; }
+  .closebtn { flex:none; border:1px solid var(--line); background:var(--soft); color:var(--ink); font-size:15px; font-weight:700;
+              padding:10px 16px; border-radius:999px; min-height:44px; touch-action:manipulation; }
+  .closebig { width:100%; margin-top:16px; min-height:50px; font-size:16px; font-weight:700; touch-action:manipulation; }
   .cinput { display:flex; gap:8px; margin-top:8px; }
   .cinput .btn { flex:none; }
   .clabel { font-size:12px; color:var(--sub); margin-top:12px; }
@@ -715,7 +720,7 @@
   <button class="tab" data-tab="ask" onpointerdown="tapTab(event,'ask')" onclick="tapTab(event,'ask')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14a1 1 0 0 1 1 1v9a1 1 0 0 1-1 1h-8l-4 3v-3H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1z"/><path d="M10 9.2a2 2 0 1 1 2.6 1.9c-.4.2-.6.5-.6.9v.4M12 14h.01"/></svg>聞くこと</button>
 </nav>
 <div id="composer" class="composer hidden">
-  <div class="ctop"><div id="cTarget"></div><button class="link" onclick="closeComposer()">閉じる</button></div>
+  <div class="ctop"><div id="cTarget"></div><button class="closebtn" onpointerdown="event.preventDefault();closeComposer()" onclick="closeComposer()" aria-label="閉じる">✕ 閉じる</button></div>
   <div class="cinput"><input id="cName" type="text" enterkeyhint="send" autocomplete="off" onkeydown="onNameKey(event)"><button class="btn" id="cAdd" onclick="quickAdd()">追加</button></div>
   <div id="cChips"></div>
 </div>
@@ -926,38 +931,62 @@ function loadTable(M, today, todayLeft, settings) {
 function makePlan(M, today, todayLeft, settings) {
   var order = {};
   M.tasks.forEach(function (t, i) { order[t.id] = i; });
-  var items = M.openLeaves().map(function (t) {
+  // まずは締め切りが近い順（同じなら優先度が高い順）
+  var base = M.openLeaves().map(function (t) {
     var e = M.effDeadline(t);
-    return { t: t, left: t.estimate, dl: e.date, key: e.date ? e.date + ' ' + (e.time || '99:99') : '' };
+    return { t: t, est: t.estimate, dl: e.date, key: e.date ? e.date + ' ' + (e.time || '99:99') : '' };
   }).sort(function (a, b) {
     var da = a.key || '9999-12-31', db = b.key || '9999-12-31';
     if (da !== db) return da < db ? -1 : 1;
     if (a.t.priority !== b.t.priority) return b.t.priority - a.t.priority;
     return order[a.t.id] - order[b.t.id];
   });
-  var days = [], day = today, cur = { date: today, cap: todayLeft, used: 0, items: [] };
-  var guard = 0, leftover = [];
-  function next() {
-    days.push(cur);
-    day = addDays(day, 1);
-    cur = { date: day, cap: capOf(day, settings), used: 0, items: [] };
-    guard++;
-  }
-  for (var i = 0; i < items.length; i++) {
-    var it = items[i];
-    if (it.left <= 0) { cur.items.push({ t: it.t, h: 0, part: false, late: !!it.dl && cur.date > it.dl }); continue; }
-    while (it.left > 1e-9) {
-      if (guard > 120) { leftover.push(it.t); break; }
-      var free = cur.cap - cur.used;
-      if (free <= 1e-9) { next(); continue; }
-      var h = Math.min(free, it.left);
-      cur.items.push({ t: it.t, h: round2(h), part: h < it.t.estimate - 1e-9, late: !!it.dl && cur.date > it.dl });
-      cur.used += h;
-      it.left -= h;
+
+  /** 並び順どおりに、1日に使える時間へ詰めていく */
+  function schedule(list) {
+    var days = [], day = today, cur = { date: today, cap: todayLeft, used: 0, items: [] };
+    var guard = 0, leftover = [], fin = {};
+    function next() {
+      days.push(cur);
+      day = addDays(day, 1);
+      cur = { date: day, cap: capOf(day, settings), used: 0, items: [] };
+      guard++;
     }
+    for (var i = 0; i < list.length; i++) {
+      var it = list[i], left = it.est;
+      if (left <= 0) { cur.items.push({ t: it.t, h: 0, part: false, late: !!it.dl && cur.date > it.dl }); fin[it.t.id] = cur.date; continue; }
+      while (left > 1e-9) {
+        if (guard > 120) { leftover.push(it.t); fin[it.t.id] = '9999-12-31'; break; }
+        var free = cur.cap - cur.used;
+        if (free <= 1e-9) { next(); continue; }
+        var h = Math.min(free, left);
+        cur.items.push({ t: it.t, h: round2(h), part: h < it.t.estimate - 1e-9, late: !!it.dl && cur.date > it.dl });
+        cur.used += h;
+        left -= h;
+        fin[it.t.id] = cur.date;
+      }
+    }
+    days.push(cur);
+    return { days: days.filter(function (d) { return d.items.length; }), leftover: leftover, fin: fin };
   }
-  days.push(cur);
-  return { days: days.filter(function (d) { return d.items.length; }), leftover: leftover };
+
+  // 優先度の高いタスクが間に合わないときは、それより優先度の低いタスクより先にやる
+  var list = base.slice(), moved = {};
+  for (var round = 0; round < list.length; round++) {
+    var r = schedule(list);
+    var late = list.filter(function (it) { return it.dl && !moved[it.t.id] && r.fin[it.t.id] > it.dl; })
+      .sort(function (a, b) { return b.t.priority - a.t.priority || (a.key < b.key ? -1 : 1); });
+    var done = false;
+    for (var k = 0; k < late.length && !done; k++) {
+      var L = late[k], i = list.indexOf(L), j = -1;
+      for (var x = 0; x < i; x++) if (list[x].t.priority < L.t.priority) { j = x; break; }
+      moved[L.t.id] = true;
+      if (j >= 0) { list.splice(i, 1); list.splice(j, 0, L); done = true; }
+    }
+    if (!done) break;
+  }
+  var res = schedule(list);
+  return { days: res.days, leftover: res.leftover };
 }
 /** 検索用に文字をそろえる：全角/半角、大文字/小文字、カタカナ/ひらがなの違いをなくす */
 function normText(s) {
@@ -1130,6 +1159,8 @@ function openComposer(parentId) {
   setTimeout(function () { $('cName').focus(); }, 60);
 }
 function closeComposer() {
+  if (!C.open) return;
+  var a = document.activeElement; if (a && a.blur) a.blur();
   C.open = false;
   document.body.classList.remove('composing');
   $('composer').classList.add('hidden');
@@ -1224,6 +1255,7 @@ function renderComposer() {
     h += '<button class="chip prichip q' + n + (effPriority() === n ? ' on' : '') + '" onclick="setPri(' + n + ')"><i></i>' + PRI_LABEL[n] + '</button>';
   });
   h += '</div><div class="clabel"><button class="link" onclick="openBulk(C.parentId)">文章でまとめて入力する</button></div>';
+  h += '<button class="btn sub closebig" onpointerdown="event.preventDefault();closeComposer()" onclick="closeComposer()">入力を終わって閉じる</button>';
   $('cChips').innerHTML = h;
 }
 function keepFocus() { if (!('ontouchstart' in window)) $('cName').focus(); }
@@ -1582,6 +1614,21 @@ function dayDetail(d, ctx) {
     h += '<div class="overdue"><div class="ovhead">⚠ 期限が過ぎています（' + overdue.length + '件・' + fmtH(overdue.reduce(function (s, t) { return s + t.estimate; }, 0)) + '）</div>';
     overdue.forEach(function (t) { overIds[t.id] = 1; h += taskLine(t, pill(fmtH(t.estimate)) + dlPill(t, false), ''); });
     h += '</div>';
+  }
+  if (d === S.today) {
+    var lateSoon = M.openLeaves().filter(function (t) {
+      var e = M.effDeadline(t);
+      return !t.temp && !overIds[t.id] && e.date && ctx.fin[t.id] && ctx.fin[t.id] > e.date;
+    }).sort(calOrder);
+    if (lateSoon.length) {
+      h += '<div class="overdue warnbox"><div class="ovhead">⚠ このままだと間に合わない見込み（' + lateSoon.length + '件）</div>'
+        + '<div class="muted" style="font-size:12px;margin-bottom:2px">使える時間を増やすか、優先度の低いものの締め切りを見直してください</div>';
+      lateSoon.forEach(function (t) {
+        var f = ctx.fin[t.id];
+        h += taskLine(t, pill(fmtH(t.estimate)) + dlPill(t, false), pill(f === '9999-12-31' ? '入りきらない' : dayLabel(f) + 'に終わる予定', 'late'));
+      });
+      h += '</div>';
+    }
   }
   if (!past) {
     var cap = d === S.today ? todayLeft : capOf(d, S.settings);
