@@ -19,18 +19,21 @@
     --green:#15803D; --green-soft:#E3F3E8;
     --p5:#B91C1C; --p4:#D97706; --p3:#155E75; --p2:#7C8796; --p1:#C9D0D8;
     --nav-h:64px;
+    --c-work:#155E75; --c-meet:#6D28D9; --c-move:#64748B; --c-break:#15803D; --c-learn:#B45309; --c-other:#9AA5B1;
   }
   @media (prefers-color-scheme: dark) {
     :root:not([data-theme="light"]) {
       --bg:#121A23; --card:#1A2430; --ink:#E6EBF0; --sub:#A3AEBB; --faint:#6F7B88; --line:#2C3846; --soft:#212D3A;
       --blue:#5EB8CF; --blue-soft:#1C3440; --red:#F07171; --red-soft:#3A2224; --orange:#F0A95A; --orange-soft:#3A2D1C;
       --green:#6CCB8D; --green-soft:#1D3527; --p3:#5EB8CF; --p1:#3E4A57;
+      --c-work:#5EB8CF; --c-meet:#B794F6; --c-move:#94A3B8; --c-break:#6CCB8D; --c-learn:#F0A95A; --c-other:#6F7B88;
     }
   }
   :root[data-theme="dark"] {
       --bg:#121A23; --card:#1A2430; --ink:#E6EBF0; --sub:#A3AEBB; --faint:#6F7B88; --line:#2C3846; --soft:#212D3A;
       --blue:#5EB8CF; --blue-soft:#1C3440; --red:#F07171; --red-soft:#3A2224; --orange:#F0A95A; --orange-soft:#3A2D1C;
       --green:#6CCB8D; --green-soft:#1D3527; --p3:#5EB8CF; --p1:#3E4A57;
+      --c-work:#5EB8CF; --c-meet:#B794F6; --c-move:#94A3B8; --c-break:#6CCB8D; --c-learn:#F0A95A; --c-other:#6F7B88;
   }
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   body { margin:0; font-family:"BIZ UDPGothic","Hiragino Sans","Noto Sans JP",sans-serif; background:var(--bg); color:var(--ink);
@@ -133,6 +136,77 @@
   .search input::-webkit-search-cancel-button { display:none; }
   .search:focus-within { border-color:var(--blue); }
   mark { background:var(--orange-soft); color:inherit; border-radius:3px; padding:0 1px; }
+  .prio { display:inline-flex; align-items:center; gap:4px; font-size:12px; line-height:1; padding:4px 8px 4px 6px; border-radius:6px; font-weight:700;
+          background:var(--pbg); color:var(--pfg); white-space:nowrap; }
+  .prio i, .prichip i { width:8px; height:8px; border-radius:50%; background:var(--pfg); flex:none; }
+  .q5 { --pfg:var(--p5); --pbg:var(--red-soft); }
+  .q4 { --pfg:var(--p4); --pbg:var(--orange-soft); }
+  .q3 { --pfg:var(--p3); --pbg:var(--blue-soft); }
+  .q2 { --pfg:var(--p2); --pbg:var(--soft); }
+  .q1 { --pfg:var(--faint); --pbg:var(--soft); }
+  .prio.q1 { font-weight:400; }
+  .chip.prichip { display:inline-flex; align-items:center; gap:6px; }
+  .chip.prichip.on { background:var(--pfg); border-color:var(--pfg); color:#fff; }
+  .chip.prichip.on i { background:#fff; }
+  /* ---- 記録 ---- */
+  .lc-work { --lc:var(--c-work); } .lc-meet { --lc:var(--c-meet); } .lc-move { --lc:var(--c-move); }
+  .lc-break { --lc:var(--c-break); } .lc-learn { --lc:var(--c-learn); } .lc-other { --lc:var(--c-other); }
+  .loghead { display:flex; align-items:center; justify-content:space-between; margin:0 0 10px; }
+  .loghead div { text-align:center; } .loghead b { font-size:17px; margin-right:6px; }
+  .loghead .icon { font-size:26px; color:var(--ink); }
+  .logtotal { display:flex; justify-content:space-between; align-items:baseline; }
+  .logtotal b { font-size:22px; }
+  .catbar { display:flex; height:10px; border-radius:5px; overflow:hidden; margin-top:10px; gap:2px; }
+  .catbar i { background:var(--lc); }
+  .catlegend { display:flex; flex-wrap:wrap; gap:6px 12px; margin-top:8px; font-size:12px; color:var(--sub); }
+  .catlegend i, .dot { display:inline-block; width:9px; height:9px; border-radius:50%; background:var(--lc); margin-right:4px; vertical-align:middle; flex:none; }
+  .logitem { display:flex; align-items:flex-start; gap:8px; padding:8px 0; border-bottom:1px solid var(--line); font-size:14px; }
+  .logitem:last-of-type { border-bottom:none; }
+  .logitem .dot { margin-top:6px; }
+  .logitem .main { flex:1; min-width:0; }
+  .logitem .meta { margin-top:4px; display:flex; flex-wrap:wrap; gap:5px; }
+  .timeline { padding:10px 10px 12px 6px; }
+  .nowbtn { width:100%; margin:4px 0 10px 0; }
+  .slot { display:flex; align-items:stretch; min-height:34px; height:34px; cursor:pointer; }
+  .slot .tl { width:44px; flex:none; font-size:11px; color:var(--sub); text-align:right; padding-right:8px; margin-top:-7px; }
+  .slot .empty { flex:1; border-top:1px dashed var(--line); color:transparent; font-size:13px; padding:6px 10px; }
+  .slot.hour .empty { border-top:1px solid var(--line); }
+  .slot:hover .empty, .slot .empty:active { color:var(--faint); background:var(--soft); }
+  .slot.now .empty { background:var(--blue-soft); color:var(--blue); }
+  .slot.filled { padding:1px 0; }
+  .block { flex:1; border-radius:8px; background:color-mix(in srgb, var(--lc) 16%, var(--card)); border-left:4px solid var(--lc);
+           padding:5px 9px; display:flex; flex-direction:column; justify-content:center; overflow:hidden; min-width:0; }
+  .block b { font-size:14px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .block span { font-size:11px; color:var(--sub); }
+  .block.one { flex-direction:row; align-items:center; gap:8px; padding:2px 9px; }
+  .block.one b { font-size:13px; flex:1; min-width:0; }
+  .block.one span { white-space:nowrap; }
+  .slot.now .block { outline:2px solid var(--blue); outline-offset:-2px; }
+  .chip.catchip { display:inline-flex; align-items:center; gap:6px; }
+  .chip.catchip i { width:9px; height:9px; border-radius:50%; background:var(--lc); }
+  .chip.catchip.on { background:var(--lc); border-color:var(--lc); color:#fff; }
+  .chip.catchip.on i { background:#fff; }
+  .chip.taskchip { max-width:220px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  body.on-log #fab { display:none; }
+  .quick { background:var(--blue-soft); border-color:transparent; }
+  .qlabel { font-size:13px; font-weight:700; color:var(--blue); margin-bottom:6px; }
+  .qrow { display:flex; gap:8px; }
+  .qrow .btn { flex:none; }
+  .quick .chips { margin-top:8px; }
+  .quick .chip { max-width:200px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .tline { padding:8px 10px 10px 4px; }
+  .lrow { display:flex; align-items:center; gap:6px; height:40px; border-top:1px dashed var(--line); }
+  .lrow.hour { border-top:1px solid var(--line); }
+  .lrow .tl { width:42px; flex:none; font-size:12px; color:var(--sub); text-align:right; align-self:flex-start; margin-top:-8px; }
+  .lin { flex:1; min-width:0; border:none; background:transparent; padding:8px 8px; font-size:15px; border-radius:8px; }
+  .lin:focus { outline:none; background:var(--soft); box-shadow:inset 0 0 0 2px var(--blue); }
+  .lrow.has .lin { background:var(--blue-soft); font-weight:700; }
+  .lrow.cont .lin { color:var(--sub); font-weight:400; }
+  .lrow.now { background:linear-gradient(90deg, transparent 46px, var(--orange-soft) 46px); border-radius:8px; }
+  .lrow.now .tl::after { content:"いま"; display:block; font-size:10px; color:var(--orange); font-weight:700; }
+  .same { flex:none; border:1px solid var(--line); background:var(--card); color:var(--sub); border-radius:999px; font-size:12px; padding:4px 9px; }
+  .lbar { height:5px; background:var(--soft); border-radius:3px; overflow:hidden; margin-top:5px; max-width:240px; }
+  .lbar i { display:block; height:100%; background:var(--blue); }
   .showdone { display:flex; align-items:center; gap:8px; font-size:14px; color:var(--sub); margin:6px 4px; }
 
   /* ---- やる順 ---- */
@@ -229,6 +303,7 @@
     if (!db.recurring) db.recurring = [];
     if (!db.generated) db.generated = {};
     if (!db.nextRecurId) db.nextRecurId = 1;
+    if (!db.logs) db.logs = {};
     return db;
   }
   function save(db) {
@@ -277,6 +352,7 @@
   function out(db) {
     return JSON.parse(JSON.stringify({
       recurring: db.recurring,
+      logs: db.logs || {},
       tasks: db.tasks.map(function (t) {
         return { id: t.id, parentId: t.parentId, level: t.level, name: t.name, estimate: t.estimate,
                  priority: t.priority, deadline: t.deadline, deadlineTime: t.deadlineTime || '', done: t.done, recurId: t.recurId || null };
@@ -306,6 +382,26 @@
 
   var api = {
     getData: function () { return finish(load()); },
+    /** 記録：date の start（"09:00"）から count 枠（15分ずつ）を entry で埋める。entry が null なら消す */
+    setLog: function (date, start, count, entry) {
+      var db = load();
+      var day = db.logs[date] || (db.logs[date] = { slots: {}, memo: '' });
+      var p = start.split(':'), m = +p[0] * 60 + +p[1];
+      for (var i = 0; i < count && m < 1440; i++, m += 15) {
+        var k = pad(Math.floor(m / 60)) + ':' + pad(m % 60);
+        if (entry) day.slots[k] = { label: String(entry.label || ''), taskId: entry.taskId || null, cat: entry.cat || 'work' };
+        else delete day.slots[k];
+      }
+      if (!Object.keys(day.slots).length && !day.memo) delete db.logs[date];
+      return finish(db);
+    },
+    setLogMemo: function (date, memo) {
+      var db = load();
+      var day = db.logs[date] || (db.logs[date] = { slots: {}, memo: '' });
+      day.memo = String(memo || '');
+      if (!Object.keys(day.slots).length && !day.memo) delete db.logs[date];
+      return finish(db);
+    },
     addRecurring: function (r) {
       var db = load();
       db.recurring.push({ id: db.nextRecurId++, name: String(r.name), estimate: Number(r.estimate) || 0,
@@ -376,6 +472,7 @@
     importData: function (text) {
       var db = JSON.parse(text);
       if (!db || !Array.isArray(db.tasks) || !db.settings) throw new Error('バックアップファイルの形式が違います');
+      if (!db.logs) db.logs = {};
       if (!db.recurring) db.recurring = [];
       if (!db.generated) db.generated = {};
       if (!db.nextRecurId) db.nextRecurId = db.recurring.reduce(function (m, r) { return Math.max(m, r.id); }, 0) + 1;
@@ -423,6 +520,7 @@
   <button class="tab" data-tab="cal" onclick="setTab('cal')"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="4" y="5" width="16" height="15" rx="2"/><path d="M4 10h16M9 3v4M15 3v4"/></svg>カレンダー</button>
   <button class="tab" data-tab="tree" onclick="setTab('tree')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h6M9 12h10M9 19h10M7 5v14"/></svg>ツリー</button>
   <button class="tab" data-tab="plan" onclick="setTab('plan')"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M10 6h10M10 12h10M10 18h10"/><path d="M4 6h1M4 12h1M4 18h1"/></svg>やる順</button>
+  <button class="tab" data-tab="log" onclick="setTab('log')"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 7.5V12l3 2"/></svg>記録</button>
 </nav>
 <div id="composer" class="composer hidden">
   <div class="ctop"><div id="cTarget"></div><button class="link" onclick="closeComposer()">閉じる</button></div>
@@ -690,6 +788,45 @@ function searchTasks(M, query) {
   });
   return { hit: hit, show: show, count: n, words: words };
 }
+// ---- 1日の記録（15分刻み） ----
+var LOG_CATS = [['work', '作業'], ['meet', '会議・面談'], ['move', '移動'], ['break', '休憩'], ['learn', '学び'], ['other', 'その他']];
+function hmToMin(hm) { var p = hm.split(':'); return +p[0] * 60 + +p[1]; }
+function minToHm(m) { return pad(Math.floor(m / 60)) + ':' + pad(m % 60); }
+function sameEntry(a, b) { return a && b && a.label === b.label; }
+/** from〜to（分）の枠を、同じ内容が続く部分ごとにまとめる */
+function logSegments(slots, from, to) {
+  var segs = [], cur = null;
+  for (var m = from; m < to; m += 15) {
+    var e = slots[minToHm(m)] || null;
+    if (cur && ((e && sameEntry(cur.entry, e)) || (!e && !cur.entry))) { cur.count++; continue; }
+    cur = { start: m, count: 1, entry: e };
+    segs.push(cur);
+  }
+  return segs;
+}
+/** 1日の集計：合計・カテゴリ別・内容別 */
+function logSummary(day) {
+  var slots = (day && day.slots) || {}, byCat = {}, byItem = {}, total = 0;
+  Object.keys(slots).forEach(function (k) {
+    var e = slots[k];
+    total += 0.25;
+    byCat[e.cat] = (byCat[e.cat] || 0) + 0.25;
+    var key = 'l' + e.label;
+    if (!byItem[key]) byItem[key] = { label: e.label, taskId: e.taskId || null, cat: e.cat, h: 0 };
+    byItem[key].h += 0.25;
+  });
+  var items = Object.keys(byItem).map(function (k) { return byItem[k]; }).sort(function (a, b) { return b.h - a.h; });
+  return { total: total, byCat: byCat, items: items };
+}
+/** タスクごとの実績時間（全部の日の合計） */
+function actualByTask(logs) {
+  var a = {};
+  Object.keys(logs || {}).forEach(function (d) {
+    var sl = logs[d].slots || {};
+    Object.keys(sl).forEach(function (k) { var id = sl[k].taskId; if (id) a[id] = (a[id] || 0) + 0.25; });
+  });
+  return a;
+}
 // ===== LOGIC END =====
 
 // ===== 画面まわり =====
@@ -703,6 +840,7 @@ var C = { open: false, parentId: null, estimate: null, deadline: '', dlKey: '', 
           repeat: '', dows: [], mday: 1 };
 var pending = [], tempSeq = 0, reqSeq = 0, appliedSeq = 0, busyN = 0;
 var calMonth = null, selDay = null, capTimers = {}, query = '', SR = null;
+var logDate = null, logNight = false, LS = null, ACT = {};
 
 function $(id) { return document.getElementById(id); }
 function esc(s) {
@@ -754,7 +892,13 @@ function callRaw(fn, args, ok, ng) {
 }
 function call(fn, args, after) { callRaw(fn, args, after); }
 
-function setTab(t) { tab = t; render(); window.scrollTo(0, 0); }
+function setTab(t) {
+  tab = t; render(); window.scrollTo(0, 0);
+  if (t === 'log' && (logDate || S.today) === S.today) {
+    // 記録は今の時刻のあたりを表示する
+    setTimeout(function () { var n = document.querySelector('.lrow.now'); if (n) n.scrollIntoView({ block: 'center' }); }, 30);
+  }
+}
 
 function render() {
   M = buildModel(S.tasks.concat(pending));
@@ -762,7 +906,9 @@ function render() {
   Array.prototype.forEach.call(document.querySelectorAll('.tab'), function (b) {
     b.classList.toggle('on', b.getAttribute('data-tab') === tab);
   });
-  $('view').innerHTML = tab === 'load' ? viewLoad() : tab === 'cal' ? viewCal() : tab === 'tree' ? viewTree() : viewPlan();
+  ACT = actualByTask(S.logs);
+  $('view').innerHTML = tab === 'load' ? viewLoad() : tab === 'cal' ? viewCal() : tab === 'tree' ? viewTree() : tab === 'log' ? viewLog() : viewPlan();
+  document.body.classList.toggle('on-log', tab === 'log');
   renderMeter();
   if (C.open) renderComposer();
 }
@@ -862,9 +1008,9 @@ function renderComposer() {
   }
   if (C.dlKey || (!p && C.repeat)) h += timeRow();
 
-  h += '<div class="clabel">優先度（5が最優先）</div><div class="chips">';
-  [1, 2, 3, 4, 5].forEach(function (n) {
-    h += '<button class="chip pri' + (effPriority() === n ? ' on' : '') + '" onclick="setPri(' + n + ')">' + n + '</button>';
+  h += '<div class="clabel">優先度</div><div class="chips">';
+  [5, 4, 3, 2, 1].forEach(function (n) {
+    h += '<button class="chip prichip q' + n + (effPriority() === n ? ' on' : '') + '" onclick="setPri(' + n + ')"><i></i>' + PRI_LABEL[n] + '</button>';
   });
   h += '</div><div class="clabel"><button class="link" onclick="openBulk(C.parentId)">文章でまとめて入力する</button></div>';
   $('cChips').innerHTML = h;
@@ -1007,6 +1153,8 @@ function dlPill(t, done) {
   else if (!done && dl.date === S.today && dl.time) extra = '（あと' + fmtH(leftToday(dl.time)) + '）';
   return '<span class="pill' + cls + (dl.own ? '' : ' inherit') + '">〆' + dlText(dl.date, dl.time) + extra + '</span>';
 }
+var PRI_LABEL = { 5: '最優先', 4: '高', 3: '中', 2: '低', 1: '後で' };
+function priBadge(p) { return '<span class="prio q' + p + '"><i></i>' + PRI_LABEL[p] + '</span>'; }
 function pill(text, cls) { return '<span class="pill' + (cls ? ' ' + cls : '') + '">' + text + '</span>'; }
 
 /** 画面上部：今日の時間メーター（30分＝1マス） */
@@ -1190,7 +1338,7 @@ function taskLine(t, meta, tags) {
   var path = M.path(t);
   return '<div class="row p' + t.priority + '"><input type="checkbox" class="chk" onchange="toggleDone(' + t.id + ',this.checked)" aria-label="完了">'
     + '<div class="main" onclick="openEdit(' + t.id + ')"><div class="nm">' + esc(t.name) + '</div>'
-    + '<div class="meta">' + tags + meta + (path ? pill(esc(path), 'inherit') : '') + '</div></div></div>';
+    + '<div class="meta">' + priBadge(t.priority) + tags + meta + (path ? pill(esc(path), 'inherit') : '') + '</div></div></div>';
 }
 
 function selectDay(d) {
@@ -1228,18 +1376,154 @@ function sendCap(d, v) {
   capTimers[d] = setTimeout(function () { callRaw('setDayCap', [d, v]); }, 700);
 }
 
+// ---- 記録（シンプル版：時刻の横に打つだけ） ----
+function logDay() { return (S.logs || {})[logDate] || { slots: {}, memo: '' }; }
+function recentLabels() {
+  var out = [], seen = {};
+  Object.keys(S.logs || {}).sort().reverse().slice(0, 14).forEach(function (d) {
+    var sl = S.logs[d].slots || {};
+    Object.keys(sl).sort().reverse().forEach(function (k) {
+      var l = sl[k].label;
+      if (l && !seen[l] && out.length < 6) { seen[l] = 1; out.push(l); }
+    });
+  });
+  return out;
+}
+function viewLog() {
+  if (!logDate) logDate = S.today;
+  var day = logDay(), sum = logSummary(day), dt = toDate(logDate), isToday = logDate === S.today;
+  var nowK = isToday ? minToHm(Math.floor(hmToMin(nowHM()) / 15) * 15) : '';
+  var h = '<div class="loghead"><button class="icon" onclick="moveLogDay(-1)" aria-label="前の日">‹</button>'
+    + '<div><b>' + (dt.getUTCMonth() + 1) + '月' + dt.getUTCDate() + '日(' + W[dt.getUTCDay()] + ')</b>'
+    + (isToday ? '' : '<button class="link" onclick="logDate=S.today;render()">今日へ</button>')
+    + '<div class="muted">記録 ' + fmtH(sum.total) + '</div></div>'
+    + '<button class="icon" onclick="moveLogDay(1)" aria-label="次の日">›</button></div>';
+
+  if (isToday) {
+    var cur = day.slots[nowK];
+    h += '<div class="card quick"><div class="qlabel">いま（' + nowK.replace(/^0/, '') + '〜）何してる？</div>'
+      + '<div class="qrow"><input id="logNow" type="text" enterkeyhint="done" autocomplete="off" placeholder="' + (cur ? esc(cur.label) : '打ってEnter') + '" onkeydown="if(event.key===\'Enter\'&&!event.isComposing&&event.keyCode!==229){event.preventDefault();logNow(this.value)}">'
+      + '<button class="btn" onclick="logNow($(\'logNow\').value)">記録</button></div>';
+    var rec = recentLabels();
+    if (rec.length) {
+      h += '<div class="chips">';
+      rec.forEach(function (l, i) { h += '<button class="chip" onclick="logNow(window._rec[' + i + '])">' + esc(l) + '</button>'; });
+      h += '</div>';
+      window._rec = rec;
+    }
+    h += '</div>';
+  }
+
+  // タイムライン：時刻の横に直接打つ
+  var from = logNight ? 0 : 6 * 60;
+  h += '<div class="card tline" id="tline" onfocusout="logBlurOut()">';
+  h += '<button class="link" style="margin:0 0 6px 4px" onclick="logNight=!logNight;render()">' + (logNight ? '0〜6時を隠す' : '0〜6時も表示') + '</button>';
+  var prev = null;
+  for (var m = from; m < 1440; m += 15) {
+    var k = minToHm(m), e = day.slots[k] || null;
+    var cont = e && prev && e.label === prev.label;
+    h += '<div class="lrow' + (m % 60 === 0 ? ' hour' : '') + (k === nowK ? ' now' : '') + (e ? ' has' : '') + (cont ? ' cont' : '') + '" data-k="' + k + '">'
+      + '<span class="tl">' + (m % 60 === 0 ? k.replace(/^0/, '') : '') + '</span>'
+      + '<input class="lin" data-k="' + k + '" value="' + (e ? esc(e.label) : '') + '" enterkeyhint="next" autocomplete="off"'
+      + (k === nowK && !e ? ' placeholder="いまここ"' : '')
+      + ' onkeydown="logKey(event,this)" onchange="logSave(this)">'
+      + (!e && prev ? '<button class="same" onclick="logSame(\'' + k + '\')">↑同じ</button>' : '')
+      + '</div>';
+    prev = e;
+  }
+  h += '</div>';
+
+  // 振り返り
+  h += '<div class="card"><div class="logtotal"><span>この日の合計</span><b>' + fmtH(sum.total) + '</b></div>';
+  if (sum.items.length) {
+    var max = sum.items[0].h;
+    sum.items.forEach(function (it) {
+      h += '<div class="logitem"><div class="main"><div>' + esc(it.label || '（内容なし）') + '</div>'
+        + '<div class="lbar"><i style="width:' + Math.round(it.h / max * 100) + '%"></i></div></div><b>' + fmtH(it.h) + '</b></div>';
+    });
+    h += '<div class="btns"><button class="btn sub" onclick="copyLog()">この日の記録をコピー</button></div>';
+  } else {
+    h += '<p class="muted" style="margin:6px 0 0">まだ記録はありません</p>';
+  }
+  h += '<label>振り返りメモ</label><textarea id="logMemo" placeholder="うまくいったこと、次に変えたいことなど" style="min-height:96px" onchange="saveMemo(this.value)">' + esc(day.memo || '') + '</textarea></div>';
+  return h;
+}
+
+/** 保存（画面を作り直さずに保存する。入力中にキーボードが閉じないように） */
+function quietLog(k, label, cb) {
+  var day = (S.logs || (S.logs = {}))[logDate] || (S.logs[logDate] = { slots: {}, memo: '' });
+  if (label) day.slots[k] = { label: label, taskId: null, cat: 'work' }; else delete day.slots[k];
+  google.script.run
+    .withSuccessHandler(function (res) { if (res && res.tasks) S = res; if (cb) cb(); })
+    .withFailureHandler(function () { toast('保存できませんでした'); })
+    .setLog(logDate, k, 1, label ? { label: label, taskId: null, cat: 'work' } : null);
+}
+function logSave(inp) {
+  var k = inp.getAttribute('data-k'), v = inp.value.trim();
+  var old = (logDay().slots[k] || {}).label || '';
+  if (v === old) return;
+  quietLog(k, v);
+  var row = inp.parentNode;
+  row.classList.toggle('has', !!v);
+  var nb = row.querySelector('.same'); if (nb && v) nb.remove();
+}
+function logKey(e, inp) {
+  if (e.key !== 'Enter' || e.isComposing || e.keyCode === 229) return;
+  e.preventDefault();
+  logSave(inp);
+  var next = inp.parentNode.nextElementSibling;
+  if (next && next.querySelector('.lin')) next.querySelector('.lin').focus();
+  else inp.blur();
+}
+function logSame(k) {
+  var prevK = minToHm(hmToMin(k) - 15), pe = logDay().slots[prevK];
+  if (!pe) return;
+  quietLog(k, pe.label, function () {});
+  render();
+}
+/** タイムラインから出たら、まとめて表示を更新 */
+function logBlurOut() {
+  setTimeout(function () {
+    var a = document.activeElement;
+    if (a && a.classList && a.classList.contains('lin')) return;
+    var y = window.scrollY; render(); window.scrollTo(0, y);
+  }, 80);
+}
+function logNow(v) {
+  v = (v || '').trim();
+  if (!v) { $('logNow').focus(); return; }
+  var k = minToHm(Math.floor(hmToMin(nowHM()) / 15) * 15);
+  quietLog(k, v, function () { var y = window.scrollY; render(); window.scrollTo(0, y); });
+  toast(k.replace(/^0/, '') + '〜 に記録しました');
+}
+function moveLogDay(n) { logDate = addDays(logDate || S.today, n); render(); window.scrollTo(0, 0); }
+function saveMemo(v) {
+  google.script.run.withSuccessHandler(function (res) { if (res && res.tasks) S = res; toast('メモを保存しました'); }).setLogMemo(logDate, v);
+}
+function copyLog() {
+  var day = logDay(), dt = toDate(logDate);
+  var lines = [(dt.getUTCMonth() + 1) + '/' + dt.getUTCDate() + '(' + W[dt.getUTCDay()] + ') の記録'];
+  logSegments(day.slots, 0, 1440).forEach(function (sg) {
+    if (!sg.entry) return;
+    lines.push(minToHm(sg.start).replace(/^0/, '') + '〜' + minToHm(sg.start + sg.count * 15).replace(/^0/, '') + ' ' + sg.entry.label + '（' + fmtH(sg.count * 0.25) + '）');
+  });
+  lines.push('合計 ' + fmtH(logSummary(day).total));
+  if (day.memo) lines.push('', '振り返り：', day.memo);
+  copyText(lines.join('\n'));
+}
+
 // ---- ツリー ----
 function viewTree() {
   return '<div class="search"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>'
     + '<input id="q" type="search" placeholder="タスクを検索" autocomplete="off" value="' + esc(query) + '" oninput="onSearch(this.value)">'
-    + (query ? '<button class="link" onclick="clearSearch()">クリア</button>' : '') + '</div>'
+    + '<button class="link" id="qClear" onclick="clearSearch()"' + (query ? '' : ' style="display:none"') + '>クリア</button></div>'
     + '<div id="treeList">' + treeList() + '</div>';
 }
+/** 検索欄そのものは作り直さず、結果の一覧だけ入れ替える（日本語入力の変換中に壊れないように） */
 function onSearch(v) {
-  var had = !!query;
   query = v;
-  if (had !== !!query) { render(); var q = $('q'); q.focus(); q.setSelectionRange(q.value.length, q.value.length); return; }
   $('treeList').innerHTML = treeList();
+  $('qClear').style.display = v ? '' : 'none';
 }
 function clearSearch() { query = ''; render(); }
 /** 一致した部分に印をつける */
@@ -1289,10 +1573,13 @@ function treeRow(t, depth) {
   var leaf = M.isLeaf(t), done = M.closed(t);
   var meta = [];
   if (t.recurId) meta.push('<span class="tag">🔁' + (depth === 0 && !done && (window._laterCount || {})[t.recurId] ? ' ほか' + window._laterCount[t.recurId] + '回' : '') + '</span>');
-  if (leaf) meta.push(t.estimate ? pill(fmtH(t.estimate)) : pill('見積なし', 'late'));
+  if (leaf) {
+    meta.push(t.estimate ? pill(fmtH(t.estimate)) : pill('見積なし', 'late'));
+    if (ACT[t.id]) meta.push(pill('実績 ' + fmtH(ACT[t.id]), ACT[t.id] > t.estimate && t.estimate ? 'soon' : 'good'));
+  }
   else meta.push(pill('残り ' + fmtH(M.hours(t, true)) + ' / ' + fmtH(M.hours(t, false))));
   if (M.effDeadline(t).own) meta.push(dlPill(t, done));
-  meta.push(pill('優' + t.priority));
+  meta.push(priBadge(t.priority));
   var progress = '';
   if (!leaf) {
     var all = M.hours(t, false), rest = M.hours(t, true);
@@ -1415,14 +1702,14 @@ function saveAdd() {
 function openEdit(id) {
   var t = M.byId[id]; if (!t || t.temp) return;
   var leaf = M.isLeaf(t), inh = M.effDeadline(t);
-  var pri = [1, 2, 3, 4, 5].map(function (n) { return '<option' + (n === t.priority ? ' selected' : '') + '>' + n + '</option>'; }).join('');
+  var pri = [5, 4, 3, 2, 1].map(function (n) { return '<option value="' + n + '"' + (n === t.priority ? ' selected' : '') + '>' + PRI_LABEL[n] + '</option>'; }).join('');
   openPanel('<h3>タスクを編集</h3>'
     + (M.path(t) ? '<div class="muted">' + esc(M.path(t)) + '</div>' : '')
     + '<label>タスク名</label><input id="eName" value="' + esc(t.name) + '">'
     + '<label>見積もり（分）</label>'
     + (leaf ? '<input id="eEst" type="number" min="0" step="5" inputmode="numeric" value="' + Math.round(t.estimate * 60) + '">'
             : '<input id="eEst" type="hidden" value="' + Math.round(t.estimate * 60) + '"><div class="muted">下のタスクの合計：' + fmtH(M.hours(t, false)) + '</div>')
-    + '<label>優先度（5が最優先）</label><select id="ePri">' + pri + '</select>'
+    + '<label>優先度</label><select id="ePri">' + pri + '</select>'
     + '<label>締め切り</label><div class="dateline" style="margin-top:0"><input id="eDl" type="date" class="dateinput" value="' + esc(t.deadline) + '">'
     + '<input id="eTm" type="time" class="dateinput" style="max-width:130px" value="' + esc(t.deadlineTime || '') + '"></div>'
     + '<div class="muted" style="margin-top:4px">時刻は空欄でもOKです</div>'
@@ -1499,7 +1786,7 @@ if (window.google && google.script) {
         + (r.type === 'monthly' ? ' ' + r.mday + '日' : '')
         + (r.time ? ' ' + r.time + 'まで' : '');
       rh += '<div class="row"><div class="main"><div class="nm">🔁 ' + esc(r.name) + '</div><div class="meta">' + when
-        + (r.estimate ? ' ・ ' + fmtH(r.estimate) : '') + ' ・ 優' + r.priority + '</div></div>'
+        + (r.estimate ? ' ・ ' + fmtH(r.estimate) : '') + ' ・ 優先度 ' + PRI_LABEL[r.priority] + '</div></div>'
         + '<button class="mini" style="color:var(--red)" onclick="stopRecurring(' + r.id + ')">やめる</button></div>';
     });
     $('panel').insertAdjacentHTML('beforeend', rh);
