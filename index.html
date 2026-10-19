@@ -260,6 +260,9 @@
   .askrow.done::before { background:var(--line) !important; }
   .answer { font-size:13px; color:var(--green); margin-top:4px; white-space:pre-wrap; }
   body.on-ask #fab { display:none; }
+  .pill.people { background:#EDE7FB; color:#5B21B6; font-weight:700; }
+  .chip.whochip.on { background:var(--blue); border-color:var(--blue); color:#fff; font-weight:700; }
+  .chip.whochip.people.on { background:#6D28D9; border-color:#6D28D9; }
   .showdone { display:flex; align-items:center; gap:8px; font-size:14px; color:var(--sub); margin:6px 4px; }
 
   /* ---- やる順 ---- */
@@ -419,13 +422,13 @@
     flat.forEach(function (f) {
       var it = f.item, t = byTid[it.tid];
       if (t) {
-        if (!t.done) { t.name = it.name; t.estimate = Number(it.estimate) || 0; t.priority = Number(it.priority) || rule.priority; }
+        if (!t.done) { t.name = it.name; t.estimate = Number(it.estimate) || 0; t.priority = Number(it.priority) || rule.priority; t.who = it.who || 'self'; }
         return;
       }
       var parent = f.parentTid ? byTid[f.parentTid] : root;
       if (!parent) return;
       t = { id: db.nextId++, parentId: parent.id, level: LEVELS[f.depth], name: it.name, estimate: Number(it.estimate) || 0,
-            priority: Number(it.priority) || rule.priority, deadline: '', deadlineTime: '', done: false, createdAt: now, doneAt: '', tmplId: it.tid };
+            priority: Number(it.priority) || rule.priority, deadline: '', deadlineTime: '', who: it.who || 'self', done: false, createdAt: now, doneAt: '', tmplId: it.tid };
       db.tasks.push(t);
       byTid[it.tid] = t;
     });
@@ -448,7 +451,7 @@
         if (db.generated[key]) continue;
         db.generated[key] = 1;
         var root = { id: db.nextId++, parentId: null, level: '親', name: r.name, estimate: r.estimate,
-          priority: r.priority, deadline: d, deadlineTime: r.time || '', done: false, createdAt: now, doneAt: '', recurId: r.id };
+          priority: r.priority, deadline: d, deadlineTime: r.time || '', who: r.who || 'self', done: false, createdAt: now, doneAt: '', recurId: r.id };
         db.tasks.push(root);
         if ((r.children || []).length) syncInstance(db, root, r, now);
         changed = true;
@@ -468,7 +471,7 @@
       questions: db.questions || [],
       tasks: db.tasks.map(function (t) {
         return { id: t.id, parentId: t.parentId, level: t.level, name: t.name, estimate: t.estimate,
-                 priority: t.priority, deadline: t.deadline, deadlineTime: t.deadlineTime || '', done: t.done, recurId: t.recurId || null, tmplId: t.tmplId || null };
+                 priority: t.priority, deadline: t.deadline, deadlineTime: t.deadlineTime || '', done: t.done, recurId: t.recurId || null, tmplId: t.tmplId || null, who: t.who === 'others' ? 'others' : 'self' };
       }),
       settings: db.settings, today: todayStr()
     }));
@@ -539,7 +542,7 @@
     addRecurring: function (r) {
       var db = load();
       db.recurring.push({ id: db.nextRecurId++, name: String(r.name), estimate: Number(r.estimate) || 0,
-        priority: Number(r.priority) || 3, type: r.type, dows: r.dows || [], mday: Number(r.mday) || 1, time: r.time || '', start: todayStr() });
+        priority: Number(r.priority) || 3, who: r.who || 'self', type: r.type, dows: r.dows || [], mday: Number(r.mday) || 1, time: r.time || '', start: todayStr() });
       return finish(db);
     },
     /**
@@ -554,7 +557,7 @@
       var patternChanged = newType !== rule.type || newMday !== rule.mday
         || JSON.stringify(newDows.slice().sort()) !== JSON.stringify((rule.dows || []).slice().sort());
       rule.name = String(r.name); rule.estimate = Number(r.estimate) || 0; rule.priority = Number(r.priority) || 3;
-      rule.time = r.time || ''; rule.type = newType; rule.dows = newDows; rule.mday = newMday;
+      rule.time = r.time || ''; if (r.who) rule.who = r.who; rule.type = newType; rule.dows = newDows; rule.mday = newMday;
       var hasKids = {};
       db.tasks.forEach(function (t) { if (t.parentId !== null && !t.tmplId) hasKids[t.parentId] = true; });
       var del = [];
@@ -564,7 +567,7 @@
           del.push(t.id);
           delete db.generated[id + '|' + t.deadline];
         } else {
-          t.name = rule.name; t.priority = rule.priority; t.deadlineTime = rule.time;
+          t.name = rule.name; t.priority = rule.priority; t.deadlineTime = rule.time; t.who = rule.who || 'self';
           if (!hasKids[t.id]) t.estimate = rule.estimate;
         }
       });
@@ -622,7 +625,7 @@
           var id = db.nextId++;
           if (pid === parentId) newIds.push(id);
           db.tasks.push({ id: id, parentId: pid, level: LEVELS[depth], name: String(n.name),
-            estimate: Number(n.estimate) || 0, priority: Number(n.priority) || 3, deadline: n.deadline || '', deadlineTime: n.deadline ? (n.deadlineTime || '') : '',
+            estimate: Number(n.estimate) || 0, priority: Number(n.priority) || 3, deadline: n.deadline || '', deadlineTime: n.deadline ? (n.deadlineTime || '') : '', who: n.who === 'others' ? 'others' : 'self',
             done: false, createdAt: now, doneAt: '' });
           walk(n.children || [], id, depth + 1);
         });
@@ -634,6 +637,7 @@
       if (!t) throw new Error('タスクが見つかりません');
       t.name = String(f.name); t.estimate = Number(f.estimate) || 0; t.priority = Number(f.priority) || 3; t.deadline = f.deadline || '';
       t.deadlineTime = t.deadline ? (f.deadlineTime || '') : '';
+      if (f.who) t.who = f.who === 'others' ? 'others' : 'self';
       return finish(db);
     },
     setDone: function (id, done) {
@@ -743,6 +747,8 @@ function makeYmd(y, m, d) {
   if (dt.getUTCMonth() !== m - 1) return null;
   return fmtDate(dt);
 }
+/** 人に聞く・依頼が必要なタスクは同じ優先度の中で先にする */
+function whoRank(t) { return t.who === 'others' ? 0 : 1; }
 function round2(h) { return Math.round(h * 600) / 600; } // 0.1分単位で丸める
 /** 時間を「1時間30分」「45分」の形にする */
 function fmtH(h) {
@@ -939,6 +945,7 @@ function makePlan(M, today, todayLeft, settings) {
     var da = a.key || '9999-12-31', db = b.key || '9999-12-31';
     if (da !== db) return da < db ? -1 : 1;
     if (a.t.priority !== b.t.priority) return b.t.priority - a.t.priority;
+    if (whoRank(a.t) !== whoRank(b.t)) return whoRank(a.t) - whoRank(b.t);
     return order[a.t.id] - order[b.t.id];
   });
 
@@ -1168,7 +1175,7 @@ function closeComposer() {
 }
 function setTarget(parentId) {
   C.parentId = parentId;
-  C.estimate = null; C.deadline = ''; C.dlKey = ''; C.dlTime = ''; C.priority = null; C.repeat = ''; C.every = false;
+  C.estimate = null; C.deadline = ''; C.dlKey = ''; C.dlTime = ''; C.priority = null; C.repeat = ''; C.every = false; C.who = null;
   if (parentId !== null) collapsed[parentId] = false;
 }
 function retarget(parentId) { setTarget(parentId); render(); scrollToTarget(); $('cName').focus(); }
@@ -1254,7 +1261,11 @@ function renderComposer() {
   [5, 4, 3, 2, 1].forEach(function (n) {
     h += '<button class="chip prichip q' + n + (effPriority() === n ? ' on' : '') + '" onclick="setPri(' + n + ')"><i></i>' + PRI_LABEL[n] + '</button>';
   });
-  h += '</div><div class="clabel"><button class="link" onclick="openBulk(C.parentId)">文章でまとめて入力する</button></div>';
+  var ew = effWho();
+  h += '</div><div class="clabel">進め方</div><div class="chips">'
+    + '<button class="chip whochip' + (ew === 'self' ? ' on' : '') + '" onclick="setWho(\'self\')">🙋 自分で完結</button>'
+    + '<button class="chip whochip people' + (ew === 'others' ? ' on' : '') + '" onclick="setWho(\'others\')">👥 人に聞く・依頼</button>'
+    + '</div><div class="clabel"><button class="link" onclick="openBulk(C.parentId)">文章でまとめて入力する</button></div>';
   h += '<button class="btn sub closebig" onpointerdown="event.preventDefault();closeComposer()" onclick="closeComposer()">入力を終わって閉じる</button>';
   $('cChips').innerHTML = h;
 }
@@ -1303,6 +1314,8 @@ function timeRow() {
   return h;
 }
 function setDlTime(t) { C.dlTime = t || ''; renderComposer(); keepFocus(); }
+function effWho() { var p = targetParent(); return C.who || (p && p.who === 'others' ? 'others' : 'self'); }
+function setWho(w) { C.who = w; renderComposer(); keepFocus(); }
 function setRepeat(r) {
   C.repeat = r;
   if (r === 'weekly' && !C.dows.length) C.dows = [dow(S.today)];
@@ -1326,7 +1339,7 @@ function quickAdd() {
   if (!name) { inp.focus(); return; }
   var p = targetParent();
   var node = { name: name, estimate: C.estimate || 0, priority: effPriority(), deadline: C.deadline,
-               deadlineTime: C.deadline ? C.dlTime : '', children: [] };
+               deadlineTime: C.deadline ? C.dlTime : '', who: effWho(), children: [] };
   inp.value = '';
   C.estimate = null;
 
@@ -1334,7 +1347,7 @@ function quickAdd() {
   if (rc && C.every) {
     // 繰り返しの「毎回つける子タスク」に登録して、今後の回すべてに足す
     var tmpl = JSON.parse(JSON.stringify(rc.rule.children || []));
-    var item = { name: name, estimate: node.estimate, priority: node.priority, children: [] };
+    var item = { name: name, estimate: node.estimate, priority: node.priority, who: node.who, children: [] };
     if (rc.parentTid) {
       var holder = tmpl.filter(function (c) { return c.tid === rc.parentTid; })[0];
       if (!holder) { toast('元になる子タスクが見つかりません'); return; }
@@ -1350,7 +1363,7 @@ function quickAdd() {
 
   if (!p && C.repeat) {
     if (C.repeat === 'weekly' && !C.dows.length) { inp.value = name; toast('曜日を選んでください'); return; }
-    var rule = { name: name, estimate: node.estimate, priority: node.priority, type: C.repeat, dows: C.dows.slice(), mday: C.mday, time: C.dlTime };
+    var rule = { name: name, estimate: node.estimate, priority: node.priority, who: node.who, type: C.repeat, dows: C.dows.slice(), mday: C.mday, time: C.dlTime };
     C.saving = true;
     renderComposer();
     callRaw('addRecurring', [rule], function () {
@@ -1378,7 +1391,7 @@ function quickAdd() {
 
   // 子・孫：保存を待たずにすぐ表示して、続けて入力できるようにする
   var temp = { id: -(++tempSeq), parentId: p.id, level: LV[LV.indexOf(p.level) + 1], name: name,
-               estimate: node.estimate, priority: node.priority, deadline: node.deadline, deadlineTime: node.deadlineTime, done: false, temp: true };
+               estimate: node.estimate, priority: node.priority, deadline: node.deadline, deadlineTime: node.deadlineTime, who: node.who, done: false, temp: true };
   pending.push(temp);
   render();
   inp.focus();
@@ -1421,6 +1434,7 @@ function dlPill(t, done) {
 }
 var PRI_LABEL = { 5: '最優先', 4: '高', 3: '中', 2: '低', 1: '後で' };
 function priBadge(p) { return '<span class="prio q' + p + '"><i></i>' + PRI_LABEL[p] + '</span>'; }
+function whoBadge(t) { return t.who === 'others' ? '<span class="pill people">👥 人が必要</span>' : ''; }
 function pill(text, cls) { return '<span class="pill' + (cls ? ' ' + cls : '') + '">' + text + '</span>'; }
 
 /** 画面上部：今日の時間メーター（30分＝1マス） */
@@ -1526,6 +1540,8 @@ function priorityCard() {
       + (sub.length ? '<div class="muted" style="font-size:12px;margin-top:3px">' + sub.join('　') + '</div>' : '') + '</div>'
       + '<div class="prinum"><b>' + fmtH(x.all) + '</b><span class="muted">' + x.n + '件</span></div></div>';
   });
+  var others = M.openLeaves().filter(function (t) { return !t.temp && t.who === 'others'; });
+  if (others.length) h += '<div class="muted" style="margin-top:8px">うち 👥 人に聞く・依頼が必要：' + others.length + '件・' + fmtH(others.reduce(function (s, t) { return s + t.estimate; }, 0)) + '</div>';
   return h + '</div>';
 }
 
@@ -1598,6 +1614,7 @@ function calOrder(a, b) {
   var ta = dueGroup(ea), tb = dueGroup(eb);
   if (ta !== tb) return ta - tb;
   if (a.priority !== b.priority) return b.priority - a.priority;
+  if (whoRank(a) !== whoRank(b)) return whoRank(a) - whoRank(b);
   var ka = ea.date ? ea.date + ' ' + (ea.time || '99:99') : '9999', kb = eb.date ? eb.date + ' ' + (eb.time || '99:99') : '9999';
   if (ka !== kb) return ka < kb ? -1 : 1;
   return a.id - b.id;
@@ -1687,7 +1704,7 @@ function taskLine(t, meta, tags) {
   var path = M.path(t);
   return '<div class="row p' + t.priority + '"><input type="checkbox" class="chk" onchange="toggleDone(' + t.id + ',this.checked)" aria-label="完了">'
     + '<div class="main" onclick="openEdit(' + t.id + ')"><div class="nm">' + esc(t.name) + '</div>'
-    + '<div class="meta">' + priBadge(t.priority) + tags + meta + '</div>'
+    + '<div class="meta">' + priBadge(t.priority) + whoBadge(t) + tags + meta + '</div>'
     + (path ? '<button class="pathlink" onclick="event.stopPropagation();showFamily(' + t.id + ')">' + esc(path) + '<span>全体を見る ›</span></button>' : '')
     + '</div></div>';
 }
@@ -2014,7 +2031,7 @@ function treeList() {
   var roots = M.roots.filter(function (t) { return SR ? SR.show[t.id] : (showDone || !M.closed(t)); }).sort(function (a, b) {
     var da = M.effDeadline(a).date || '9999', db = M.effDeadline(b).date || '9999';
     if (da !== db) return da < db ? -1 : 1;
-    return b.priority - a.priority;
+    return (b.priority - a.priority) || (whoRank(a) - whoRank(b));
   });
   // 繰り返しタスクは、まだ終わっていない一番近い回だけ表示する
   var seenRecur = {}, laterCount = {};
@@ -2050,6 +2067,7 @@ function treeRow(t, depth) {
   else meta.push(pill('残り ' + fmtH(M.hours(t, true)) + ' / ' + fmtH(M.hours(t, false))));
   if (M.effDeadline(t).own) meta.push(dlPill(t, done));
   meta.push(priBadge(t.priority));
+  meta.push(whoBadge(t));
   var progress = '';
   if (!leaf) {
     var all = M.hours(t, false), rest = M.hours(t, true);
@@ -2180,6 +2198,9 @@ function openEdit(id) {
     + (leaf ? '<input id="eEst" type="number" min="0" step="5" inputmode="numeric" value="' + Math.round(t.estimate * 60) + '">'
             : '<input id="eEst" type="hidden" value="' + Math.round(t.estimate * 60) + '"><div class="muted">下のタスクの合計：' + fmtH(M.hours(t, false)) + '</div>')
     + '<label>優先度</label><select id="ePri">' + pri + '</select>'
+    + '<div class="clabel">進め方</div><div class="chips" id="eWhoChips">'
+    + '<button class="chip whochip' + (t.who !== 'others' ? ' on' : '') + '" data-w="self" onclick="pickEWho(this)">🙋 自分で完結</button>'
+    + '<button class="chip whochip people' + (t.who === 'others' ? ' on' : '') + '" data-w="others" onclick="pickEWho(this)">👥 人に聞く・依頼</button></div>'
     + '<label>締め切り</label><div class="dateline" style="margin-top:0"><input id="eDl" type="date" class="dateinput" value="' + esc(t.deadline) + '">'
     + '<input id="eTm" type="time" class="dateinput" style="max-width:130px" value="' + esc(t.deadlineTime || '') + '"></div>'
     + '<div class="muted" style="margin-top:4px">時刻は空欄でもOKです</div>'
@@ -2218,7 +2239,7 @@ function saveEditAll(id) {
   var t = M.byId[id], r = ruleOf(t.recurId), name = $('eName').value.trim();
   if (!name) { toast('タスク名を入れてください'); return; }
   var est = M.isLeaf(t) ? (parseFloat($('eEst').value) || 0) / 60 : r.estimate;
-  call('updateRecurring', [r.id, { name: name, estimate: est, priority: +$('ePri').value, time: $('eTm').value,
+  call('updateRecurring', [r.id, { name: name, estimate: est, priority: +$('ePri').value, time: $('eTm').value, who: eWho(),
     type: r.type, dows: r.dows, mday: r.mday }], function () { closeModal(); toast('今後の回もまとめて変更しました'); });
 }
 var RE = null;
@@ -2298,10 +2319,14 @@ function stopRecur(id) {
   if (!confirm('この繰り返しをやめますか？まだ終わっていない今日以降の回も消えます。')) return;
   call('deleteRecurring', [id], function () { closeModal(); toast('繰り返しをやめました'); });
 }
+function pickEWho(b) {
+  Array.prototype.forEach.call(document.querySelectorAll('#eWhoChips .chip'), function (x) { x.classList.toggle('on', x === b); });
+}
+function eWho() { var b = document.querySelector('#eWhoChips .chip.on'); return b ? b.getAttribute('data-w') : 'self'; }
 function saveEdit(id) {
   var name = $('eName').value.trim();
   if (!name) { toast('タスク名を入れてください'); return; }
-  call('updateTask', [id, { name: name, estimate: (parseFloat($('eEst').value) || 0) / 60, priority: +$('ePri').value, deadline: $('eDl').value, deadlineTime: $('eDl').value ? $('eTm').value : '' }],
+  call('updateTask', [id, { name: name, estimate: (parseFloat($('eEst').value) || 0) / 60, priority: +$('ePri').value, deadline: $('eDl').value, deadlineTime: $('eDl').value ? $('eTm').value : '', who: eWho() }],
     function () { closeModal(); toast('保存しました'); });
 }
 function removeTask(id) {
