@@ -321,6 +321,42 @@
   .buckettotal b { font-size:22px; margin-right:6px; }
   .bucketbtn { flex:none; border:1px dashed var(--orange); background:var(--card); color:var(--orange); font-weight:700; font-size:13px; padding:8px 10px; border-radius:10px; }
   .bucketbtn.on { border-style:solid; border-color:var(--green); background:var(--green-soft); color:var(--green); }
+  .schedbtn.exp { border:1px solid var(--blue); background:var(--blue-soft); color:var(--blue); }
+  .schedhead.exp { color:var(--blue); background:var(--blue-soft); margin-top:10px; }
+  .bucketbtn.exp { border-style:solid; border-color:var(--blue); background:var(--blue-soft); color:var(--blue); }
+  .exportbtn { width:100%; margin-top:12px; min-height:48px; }
+  .outlookbtn { display:flex; justify-content:space-between; align-items:center; gap:8px; width:100%; margin-bottom:10px; padding:11px 14px;
+                border:1px solid var(--line); border-radius:12px; background:var(--card); color:var(--ink); text-align:left; }
+  .outlookbtn b { font-size:14px; flex:none; }
+  .outlookbtn span { font-size:12px; color:var(--orange); font-weight:700; text-align:right; }
+  .outsum { display:grid; grid-template-columns:repeat(3,1fr); gap:6px; margin-top:10px; }
+  .outsum div { background:var(--soft); border-radius:10px; padding:8px; text-align:center; }
+  .outsum b { display:block; font-size:22px; }
+  .outsum span { font-size:11px; color:var(--sub); }
+  .brow { display:flex; align-items:center; gap:8px; padding:7px 0; border-bottom:1px solid var(--line); }
+  .brow:last-of-type { border-bottom:none; }
+  .bdate { flex:none; width:70px; text-align:left; border:none; background:none; color:var(--blue); font-weight:700; font-size:13px; padding:0; }
+  .btrack { flex:1; min-width:0; }
+  .bbar { height:12px; border-radius:4px; background:var(--orange); }
+  .bval { flex:none; min-width:66px; text-align:right; line-height:1.2; }
+  .bval b { display:block; font-size:14px; } .bval span { font-size:11px; }
+  .outday { margin-top:10px; border-top:1px solid var(--line); padding-top:8px; }
+  .outdayhead { display:flex; align-items:center; gap:8px; }
+  .outdayhead b { font-size:15px; } .outdayhead .muted { flex:1; }
+  .pill.spanpill { background:#E6EEF8; color:#1E4E8C; font-weight:700; }
+  .cspan { display:flex; flex-direction:column; gap:2px; }
+  .cspan i { display:block; height:4px; background:#5B8BD6; margin:0 -4px; }
+  .cspan i.st { margin-left:0; border-radius:2px 0 0 2px; }
+  .cspan i.en { margin-right:0; border-radius:0 2px 2px 0; }
+  .cspan em { font-size:9px; font-style:normal; color:var(--sub); line-height:1; }
+  .spanrow { padding:8px 10px; margin-top:6px; border:1px solid var(--line); border-left:4px solid #5B8BD6; border-radius:10px; cursor:pointer; }
+  .spanrow .nm { font-weight:700; }
+  .spanrow .meta { display:flex; flex-wrap:wrap; gap:5px; margin-top:4px; }
+  .spanbar { height:4px; background:var(--soft); border-radius:2px; overflow:hidden; margin-bottom:6px; }
+  .spanbar i { display:block; height:100%; background:#5B8BD6; }
+  .ddhead { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+  .ddhead b { font-size:16px; }
+  #daydetail { scroll-margin-top:150px; }
   .showdone { display:flex; align-items:center; gap:8px; font-size:14px; color:var(--sub); margin:6px 4px; }
 
   /* ---- やる順 ---- */
@@ -531,7 +567,7 @@
       bucketSched: db.bucketSched || {},
       tasks: db.tasks.map(function (t) {
         return { id: t.id, parentId: t.parentId, level: t.level, name: t.name, estimate: t.estimate,
-                 priority: t.priority, deadline: t.deadline, deadlineTime: t.deadlineTime || '', done: t.done, recurId: t.recurId || null, tmplId: t.tmplId || null, who: normWho(t.who), sched: !!t.sched, mode: t.mode === 'bucket' ? 'bucket' : 'single' };
+                 priority: t.priority, deadline: t.deadline, deadlineTime: t.deadlineTime || '', done: t.done, recurId: t.recurId || null, tmplId: t.tmplId || null, who: normWho(t.who), startDate: t.startDate || '', sched: t.sched === 'exported' ? 'exported' : !!t.sched, mode: t.mode === 'bucket' ? 'bucket' : 'single' };
       }),
       settings: db.settings, today: todayStr()
     }));
@@ -563,13 +599,27 @@
     setBucketSched: function (date, v) {
       var db = load();
       db.bucketSched = db.bucketSched || {};
-      if (v) db.bucketSched[date] = true; else delete db.bucketSched[date];
+      if (v) db.bucketSched[date] = v === 'exported' ? 'exported' : true; else delete db.bucketSched[date];
+      return finish(db);
+    },
+    /** 書き出したものを「確認待ち」にする（入れた にしてあるものはそのまま） */
+    markExported: function (date, ids, bucket) {
+      var db = load();
+      db.tasks.forEach(function (t) { if (ids.indexOf(t.id) >= 0 && t.sched !== true) t.sched = 'exported'; });
+      db.bucketSched = db.bucketSched || {};
+      if (bucket && db.bucketSched[date] !== true) db.bucketSched[date] = 'exported';
+      return finish(db);
+    },
+    /** 確認待ちのものを「入れた」にする */
+    confirmExported: function (ids) {
+      var db = load();
+      db.tasks.forEach(function (t) { if (ids.indexOf(t.id) >= 0 && t.sched === 'exported') t.sched = true; });
       return finish(db);
     },
     setScheduled: function (id, v) {
       var db = load(), t = db.tasks.filter(function (x) { return x.id === Number(id); })[0];
       if (!t) throw new Error('タスクが見つかりません');
-      t.sched = !!v;
+      t.sched = v === 'exported' ? 'exported' : !!v;
       return finish(db);
     },
     // ---- 聞きたいこと ----
@@ -699,7 +749,7 @@
           var id = db.nextId++;
           if (pid === parentId) newIds.push(id);
           db.tasks.push({ id: id, parentId: pid, level: LEVELS[depth], name: String(n.name),
-            estimate: Number(n.estimate) || 0, priority: Number(n.priority) || 3, deadline: n.deadline || '', deadlineTime: n.deadline ? (n.deadlineTime || '') : '', who: normWho(n.who), mode: n.mode === 'bucket' ? 'bucket' : 'single',
+            estimate: Number(n.estimate) || 0, priority: Number(n.priority) || 3, deadline: n.deadline || '', deadlineTime: n.deadline ? (n.deadlineTime || '') : '', startDate: n.startDate || '', who: normWho(n.who), mode: n.mode === 'bucket' ? 'bucket' : 'single',
             done: false, createdAt: now, doneAt: '' });
           walk(n.children || [], id, depth + 1);
         });
@@ -712,7 +762,8 @@
       t.name = String(f.name); t.estimate = Number(f.estimate) || 0; t.priority = Number(f.priority) || 3; t.deadline = f.deadline || '';
       t.deadlineTime = t.deadline ? (f.deadlineTime || '') : '';
       if (f.who) t.who = normWho(f.who);
-      if (f.sched !== undefined) t.sched = !!f.sched;
+      if (f.sched !== undefined) t.sched = f.sched === 'exported' ? 'exported' : !!f.sched;
+      if (f.startDate !== undefined) t.startDate = f.startDate || '';
       if (f.mode) t.mode = f.mode === 'bucket' ? 'bucket' : 'single';
       return finish(db);
     },
@@ -933,6 +984,13 @@ function buildModel(tasks) {
   M.roots = tasks.filter(function (t) { return t.parentId === null || !byId[t.parentId]; });
   M.isLeaf = function (t) { return kids[t.id].length === 0; };
   var dlMemo = {}, closedMemo = {}, openMemo = null;
+  var stMemo = {};
+  M.effStart = function (t) {
+    if (stMemo[t.id] !== undefined) return stMemo[t.id];
+    var r = '';
+    for (var c = t; c; c = byId[c.parentId]) if (c.startDate) { r = c.startDate; break; }
+    return (stMemo[t.id] = r);
+  };
   M.effDeadline = function (t) {
     if (dlMemo[t.id]) return dlMemo[t.id];
     var r = { date: '', time: '', own: true };
@@ -1022,7 +1080,7 @@ function makePlan(M, today, todayLeft, settings) {
   // まずは締め切りが近い順（同じなら優先度が高い順）
   var base = M.openLeaves().map(function (t) {
     var e = M.effDeadline(t);
-    return { t: t, est: t.estimate, dl: e.date, key: e.date ? e.date + ' ' + (e.time || '99:99') : '' };
+    return { t: t, est: t.estimate, dl: e.date, st: M.effStart(t), key: e.date ? e.date + ' ' + (e.time || '99:99') : '' };
   }).sort(function (a, b) {
     var da = a.key || '9999-12-31', db = b.key || '9999-12-31';
     if (da !== db) return da < db ? -1 : 1;
@@ -1033,30 +1091,28 @@ function makePlan(M, today, todayLeft, settings) {
 
   /** 並び順どおりに、1日に使える時間へ詰めていく */
   function schedule(list) {
-    var days = [], day = today, cur = { date: today, cap: todayLeft, used: 0, items: [] };
-    var guard = 0, leftover = [], fin = {};
-    function next() {
-      days.push(cur);
-      day = addDays(day, 1);
-      cur = { date: day, cap: capOf(day, settings), used: 0, items: [] };
-      guard++;
-    }
-    for (var i = 0; i < list.length; i++) {
-      var it = list[i], left = it.est;
-      if (left <= 0) { cur.items.push({ t: it.t, h: 0, part: false, late: !!it.dl && cur.date > it.dl }); fin[it.t.id] = cur.date; continue; }
-      while (left > 1e-9) {
-        if (guard > 120) { leftover.push(it.t); fin[it.t.id] = '9999-12-31'; break; }
+    var days = [], fin = {}, left = list.map(function (it) { return it.est; }), remain = list.length, leftover = [];
+    for (var g = 0; g <= 120 && remain > 0; g++) {
+      var date = addDays(today, g), cap = g === 0 ? todayLeft : capOf(date, settings);
+      var cur = { date: date, cap: cap, used: 0, items: [] };
+      for (var i = 0; i < list.length; i++) {
+        var it = list[i];
+        if (left[i] === null || (it.st && it.st > date)) continue;   // 終わったもの・まだ開始日前のもの
+        if (left[i] <= 1e-9) {                                      // 見積もり0のもの
+          cur.items.push({ t: it.t, h: 0, part: false, late: !!it.dl && date > it.dl });
+          fin[it.t.id] = date; left[i] = null; remain--; continue;
+        }
         var free = cur.cap - cur.used;
-        if (free <= 1e-9) { next(); continue; }
-        var h = Math.min(free, left);
-        cur.items.push({ t: it.t, h: round2(h), part: h < it.t.estimate - 1e-9, late: !!it.dl && cur.date > it.dl });
-        cur.used += h;
-        left -= h;
-        fin[it.t.id] = cur.date;
+        if (free <= 1e-9) continue;
+        var h = Math.min(free, left[i]);
+        cur.items.push({ t: it.t, h: round2(h), part: h < it.t.estimate - 1e-9, late: !!it.dl && date > it.dl });
+        cur.used += h; left[i] -= h; fin[it.t.id] = date;
+        if (left[i] <= 1e-9) { left[i] = null; remain--; }
       }
+      if (cur.items.length) days.push(cur);
     }
-    days.push(cur);
-    return { days: days.filter(function (d) { return d.items.length; }), leftover: leftover, fin: fin };
+    list.forEach(function (it, i) { if (left[i] !== null) { leftover.push(it.t); fin[it.t.id] = '9999-12-31'; } });
+    return { days: days, leftover: leftover, fin: fin };
   }
 
   // 優先度の高いタスクが間に合わないときは、それより優先度の低いタスクより先にやる
@@ -1146,7 +1202,7 @@ var M = buildModel([]);
 var tab = 'load', todayLeft = null, collapsed = {}, showDone = false;
 var addCtx = null;
 // ボタン入力用
-var C = { open: false, parentId: null, estimate: null, deadline: '', dlKey: '', dlTime: '', priority: null, saving: false,
+var C = { open: false, parentId: null, estimate: null, deadline: '', dlKey: '', dlTime: '', startDate: '', priority: null, saving: false,
           repeat: '', dows: [], mday: 1 };
 var pending = [], tempSeq = 0, reqSeq = 0, appliedSeq = 0, busyN = 0;
 var calMonth = null, selDay = null, capTimers = {}, query = '', SR = null;
@@ -1228,10 +1284,10 @@ function render() {
   PLAN = null;
   if (C.parentId !== null && !M.byId[C.parentId]) C.parentId = null;
   Array.prototype.forEach.call(document.querySelectorAll('.tab, .qs'), function (b) {
-    b.classList.toggle('on', b.getAttribute('data-tab') === tab);
+    b.classList.toggle('on', b.getAttribute('data-tab') === (tab === 'outlook' ? 'cal' : tab));
   });
   ACT = actualByTask(S.logs);
-  $('view').innerHTML = tab === 'load' ? viewLoad() : tab === 'cal' ? viewCal() : tab === 'tree' ? viewTree() : tab === 'log' ? viewLog() : tab === 'ask' ? viewAsk() : viewPlan();
+  $('view').innerHTML = tab === 'load' ? viewLoad() : tab === 'cal' ? viewCal() : tab === 'tree' ? viewTree() : tab === 'log' ? viewLog() : tab === 'ask' ? viewAsk() : tab === 'outlook' ? viewOutlook() : viewPlan();
   document.body.classList.toggle('on-ask', tab === 'ask');
   document.body.classList.toggle('on-log', tab === 'log');
   renderMeter();
@@ -1260,7 +1316,7 @@ function closeComposer() {
 }
 function setTarget(parentId) {
   C.parentId = parentId;
-  C.estimate = null; C.deadline = ''; C.dlKey = ''; C.dlTime = ''; C.priority = null; C.repeat = ''; C.every = false; C.who = null; C.mode = null;
+  C.estimate = null; C.deadline = ''; C.dlKey = ''; C.dlTime = ''; C.priority = null; C.repeat = ''; C.every = false; C.who = null; C.mode = null; C.startDate = '';
   if (parentId !== null) collapsed[parentId] = false;
 }
 function retarget(parentId) { setTarget(parentId); render(); scrollToTarget(); $('cName').focus(); }
@@ -1341,6 +1397,14 @@ function renderComposer() {
     + (custom ? '<button class="link" onclick="setDl(\'\')">解除</button>' : '') + '</div>';
   }
   if (C.dlKey || (!p && C.repeat)) h += timeRow();
+  if (!C.repeat) {
+    h += '<div class="clabel">開始日（何日かかけてやるとき）</div><div class="chips">'
+      + '<button class="chip' + (!C.startDate ? ' on' : '') + '" onclick="setStart(\'\')">なし</button>'
+      + '<button class="chip' + (C.startDate === S.today ? ' on' : '') + '" onclick="setStart(S.today)">今日から</button>'
+      + '<button class="chip' + (C.startDate === addDays(S.today, 1) ? ' on' : '') + '" onclick="setStart(addDays(S.today,1))">明日から</button></div>'
+      + '<div class="dateline"><span class="muted">日付を指定：</span><input type="date" class="dateinput' + (C.startDate && C.startDate !== S.today && C.startDate !== addDays(S.today, 1) ? ' on' : '') + '" value="' + C.startDate + '" onchange="setStart(this.value)"></div>';
+    if (C.startDate && C.deadline && C.startDate > C.deadline) h += '<div class="err">開始日が締め切りより後になっています</div>';
+  }
 
   h += '<div class="clabel">優先度</div><div class="chips">';
   [5, 4, 3, 2, 1].forEach(function (n) {
@@ -1406,6 +1470,7 @@ function timeRow() {
 }
 function setDlTime(t) { C.dlTime = t || ''; renderComposer(); keepFocus(); }
 function effWho() { var p = targetParent(); return C.who || (p && (p.who === 'others' || p.who === 'gap') ? p.who : 'self'); }
+function setStart(v) { C.startDate = v || ''; renderComposer(); keepFocus(); }
 function setWho(w) { C.who = w; renderComposer(); keepFocus(); }
 /** 予定の入れ方：選ばなければ、親と同じ。隙間時間のものはバケットにする */
 function effMode() {
@@ -1438,7 +1503,7 @@ function quickAdd() {
   if (!name) { inp.focus(); return; }
   var p = targetParent();
   var node = { name: name, estimate: C.estimate || 0, priority: effPriority(), deadline: C.deadline,
-               deadlineTime: C.deadline ? C.dlTime : '', who: effWho(), mode: effMode(), children: [] };
+               deadlineTime: C.deadline ? C.dlTime : '', startDate: C.startDate, who: effWho(), mode: effMode(), children: [] };
   inp.value = '';
   C.estimate = null;
 
@@ -1490,7 +1555,7 @@ function quickAdd() {
 
   // 子・孫：保存を待たずにすぐ表示して、続けて入力できるようにする
   var temp = { id: -(++tempSeq), parentId: p.id, level: LV[LV.indexOf(p.level) + 1], name: name,
-               estimate: node.estimate, priority: node.priority, deadline: node.deadline, deadlineTime: node.deadlineTime, who: node.who, mode: node.mode, done: false, temp: true };
+               estimate: node.estimate, priority: node.priority, deadline: node.deadline, deadlineTime: node.deadlineTime, startDate: node.startDate, who: node.who, mode: node.mode, done: false, temp: true };
   pending.push(temp);
   render();
   inp.focus();
@@ -1534,6 +1599,13 @@ function dlPill(t, done) {
 var PRI_LABEL = { 5: '最優先', 4: '高', 3: '中', 2: '低', 1: '後で' };
 function priBadge(p) { return '<span class="prio q' + p + '"><i></i>' + PRI_LABEL[p] + '</span>'; }
 function whoBadge(t) { return t.who === 'others' ? '<span class="pill people">👥 人が必要</span>' : t.who === 'gap' ? '<span class="pill gap">⏱ 隙間でOK</span>' : ''; }
+function spanPill(t) {
+  var st = M.effStart(t), e = M.effDeadline(t);
+  if (!st) return '';
+  var sd = toDate(st), md = (sd.getUTCMonth() + 1) + '/' + sd.getUTCDate();
+  var ed = e.date ? toDate(e.date) : null;
+  return '<span class="pill spanpill">📆 ' + md + '〜' + (ed ? (ed.getUTCMonth() + 1) + '/' + ed.getUTCDate() : '') + '</span>';
+}
 function pill(text, cls) { return '<span class="pill' + (cls ? ' ' + cls : '') + '">' + text + '</span>'; }
 
 /** 画面上部：今日の時間メーター（30分＝1マス） */
@@ -1551,6 +1623,8 @@ function renderMeter() {
   var unsched = today ? today.items.filter(function (x) { return !x.t.sched && x.t.mode !== 'bucket'; }).map(function (x) { return x.t.id; }).filter(function (v, i, a) { return a.indexOf(v) === i; }).length : 0;
   var bucketH = today ? today.items.filter(function (x) { return x.t.mode === 'bucket'; }).reduce(function (s, x) { return s + x.h; }, 0) : 0;
   var bucketTodo = bucketH > 0 && !(S.bucketSched || {})[S.today];
+  var waitN = today ? today.items.filter(function (x) { return x.t.sched === 'exported'; }).map(function (x) { return x.t.id; }).filter(function (v, i, a) { return a.indexOf(v) === i; }).length : 0;
+  if ((S.bucketSched || {})[S.today] === 'exported') waitN++;
   var used = today ? today.used : 0, cap = todayLeft || 0;
   var h = '<div class="meter-line"><span><span class="big">' + bigTime(used) + '</span> ／ ' + fmtH(cap) + ' 使える</span>'
     + (lateN ? '<button class="alert" onclick="setTab(\'cal\')">間に合わない ' + lateN + '件</button>' : '<span>' + (cap ? (used >= cap ? 'いっぱい' : 'あと' + fmtH(round2(cap - used)) + '空き') : '') + '</span>')
@@ -1563,8 +1637,9 @@ function renderMeter() {
   } else {
     h += '<div class="blocks rest">今日は作業時間を入れていません（カレンダーで変更できます）</div>';
   }
-  if (unsched || bucketTodo) h += '<button class="unsched" onclick="setTab(\'cal\')">📅 まだ予定に入れていない：'
-    + [unsched ? '個別 ' + unsched + '件' : '', bucketTodo ? 'バケット枠 ' + fmtH(bucketH) : ''].filter(Boolean).join('・') + '</button>';
+  if (unsched || bucketTodo || waitN) h += '<button class="unsched" onclick="setTab(\'outlook\')">'
+    + [unsched || bucketTodo ? '📅 まだOutlookに入れていない：' + [unsched ? '個別 ' + unsched + '件' : '', bucketTodo ? 'バケット枠 ' + fmtH(bucketH) : ''].filter(Boolean).join('・') : '',
+       waitN ? '📤 確認待ち ' + waitN + '件' : ''].filter(Boolean).join('　') + '</button>';
   $('meter').innerHTML = h;
 }
 
@@ -1730,6 +1805,94 @@ function bigTime(h) {
   if (!t) return '0<small>分</small>';
   return (hh ? hh + '<small>時間</small>' : '') + (mm ? mm + '<small>分</small>' : '');
 }
+// ---- Outlookに入れる一覧 ----
+var OUT_DAYS = 14;
+/** これから14日分の、Outlookに入れるものを日ごとにまとめる */
+function outlookData() {
+  var to = addDays(S.today, OUT_DAYS - 1), days = [];
+  planNow().days.forEach(function (d) {
+    if (d.date > to) return;
+    var seen = {}, singles = [], bucket = [];
+    d.items.forEach(function (x) {
+      if (x.t.mode === 'bucket') bucket.push(x);
+      else if (!seen[x.t.id]) { seen[x.t.id] = 1; singles.push({ t: x.t, h: d.items.filter(function (y) { return y.t.id === x.t.id; }).reduce(function (s, y) { return s + y.h; }, 0) }); }
+    });
+    days.push({ date: d.date, singles: singles, bucket: bucket,
+      bucketH: bucket.reduce(function (s, x) { return s + x.h; }, 0), bucketSt: (S.bucketSched || {})[d.date] || false });
+  });
+  return days;
+}
+function outlookCounts() {
+  var c = { notYet: 0, wait: 0, bucketNotYet: 0, bucketWait: 0 }, seen = {};
+  outlookData().forEach(function (d) {
+    d.singles.forEach(function (x) {
+      if (seen[x.t.id]) return; seen[x.t.id] = 1;
+      if (!x.t.sched) c.notYet++; else if (x.t.sched === 'exported') c.wait++;
+    });
+    if (d.bucketH > 0) { if (!d.bucketSt) c.bucketNotYet++; else if (d.bucketSt === 'exported') c.bucketWait++; }
+  });
+  return c;
+}
+function outlookSummaryBtn() {
+  var c = outlookCounts();
+  var txt = [c.notYet ? '個別 未' + c.notYet + '件' : '', c.wait + c.bucketWait ? '確認待ち' + (c.wait + c.bucketWait) + '件' : '', c.bucketNotYet ? 'バケット未' + c.bucketNotYet + '日' : ''].filter(Boolean).join('・');
+  return '<button class="outlookbtn" onclick="setTab(\'outlook\')"><b>📅 Outlookに入れる一覧</b><span>' + (txt || '✓ 14日分すべて入っています') + ' ›</span></button>';
+}
+function viewOutlook() {
+  var days = outlookData(), c = outlookCounts();
+  var h = '<button class="backlink" onclick="setTab(\'cal\')">‹ カレンダーに戻る</button>'
+    + '<div class="card"><b style="font-size:17px">📅 Outlookに入れる一覧</b><div class="muted" style="font-size:12px">今日から' + OUT_DAYS + '日分</div>'
+    + '<div class="outsum"><div><b>' + c.notYet + '</b><span>個別・未</span></div><div><b>' + (c.wait + c.bucketWait) + '</b><span>確認待ち</span></div><div><b>' + c.bucketNotYet + '</b><span>バケット未（日）</span></div></div></div>';
+
+  // 🗂 バケット：日ごとに必要な時間
+  var bdays = days.filter(function (d) { return d.bucketH > 0; });
+  h += '<div class="card"><b>🗂 バケット：毎日必要な時間</b>';
+  if (!bdays.length) h += '<p class="muted" style="margin:6px 0 0">バケットでまとめてやるタスクはありません</p>';
+  else {
+    var max = Math.max.apply(null, bdays.map(function (d) { return d.bucketH; }));
+    bdays.forEach(function (d) {
+      var st = d.bucketSt;
+      h += '<div class="brow"><button class="bdate" onclick="selDay=\'' + d.date + '\';calMonth=\'' + d.date.slice(0, 7) + '\';setTab(\'cal\')">' + dayLabel(d.date) + '</button>'
+        + '<div class="btrack"><div class="bbar" style="width:' + Math.max(6, d.bucketH / max * 100) + '%"></div></div>'
+        + '<div class="bval"><b>' + fmtH(d.bucketH) + '</b><span class="muted">' + d.bucket.length + '件</span></div>'
+        + '<button class="schedbtn ' + (st === true ? 'on' : st === 'exported' ? 'exp' : '') + '" onclick="toggleBucket(\'' + d.date + '\')">'
+        + (st === true ? '📅<span>入れた</span>' : st === 'exported' ? '📤<span>確認</span>' : '📅<span>未</span>') + '</button></div>';
+    });
+    h += '<div class="muted" style="font-size:12px;margin-top:6px">日付を押すと、その日の中身が見られます</div>';
+  }
+  h += '</div>';
+
+  // 📌 個別：まだOutlookに入れていない（日ごと）
+  h += '<div class="card"><b>📌 個別：まだOutlookに入れていない</b>';
+  var any = false;
+  days.forEach(function (d) {
+    var ny = d.singles.filter(function (x) { return !x.t.sched; }).sort(function (a, b) { return calOrder(a.t, b.t); });
+    if (!ny.length) return;
+    any = true;
+    h += '<div class="outday"><div class="outdayhead"><b>' + dayLabel(d.date) + '</b><span class="muted">' + ny.length + '件・' + fmtH(ny.reduce(function (s, x) { return s + x.h; }, 0)) + '</span>'
+      + '<button class="mini" onclick="openExport(\'' + d.date + '\')">📤 書き出す</button></div>';
+    ny.forEach(function (x) { h += taskLine(x.t, pill(fmtH(x.h) + (x.h < x.t.estimate - 1e-9 ? '（分割）' : '')) + dlPill(x.t, false), ''); });
+    h += '</div>';
+  });
+  if (!any) h += '<p class="muted" style="margin:6px 0 0">✓ 個別の予定はすべて入れてあります</p>';
+  h += '</div>';
+
+  // 📤 確認待ち
+  var waits = [];
+  var wseen = {};
+  days.forEach(function (d) { d.singles.forEach(function (x) { if (x.t.sched === 'exported' && !wseen[x.t.id]) { wseen[x.t.id] = 1; waits.push({ d: d.date, x: x }); } }); });
+  if (waits.length) {
+    h += '<div class="card"><b>📤 書き出し済み・Outlookで確認待ち（' + waits.length + '件）</b>';
+    waits.forEach(function (w) { h += taskLine(w.x.t, pill(dayLabel(w.d)) + pill(fmtH(w.x.h)), ''); });
+    h += '<button class="btn sub" style="width:100%;margin-top:8px" onclick="confirmAllWaits()">Outlookで確認した → 全部「入れた」にする</button></div>';
+  }
+  return h;
+}
+function confirmAllWaits() {
+  var ids = [];
+  outlookData().forEach(function (d) { d.singles.forEach(function (x) { if (x.t.sched === 'exported') ids.push(x.t.id); }); });
+  callRaw('confirmExported', [ids], function () { toast('全部「入れた」にしました'); });
+}
 function viewCal() {
   if (!calMonth) calMonth = S.today.slice(0, 7);
   if (!selDay) selDay = S.today;
@@ -1740,7 +1903,12 @@ function viewCal() {
     var dl = M.effDeadline(t).date;
     if (dl) (dlMap[dl] = dlMap[dl] || []).push(t);
   });
-  var ctx = { P: P, fin: fin, dayMap: dayMap, dlMap: dlMap };
+  // 開始日〜締切日の期間があるタスク（親でも子でも、期間を持つタスクそのもの）
+  var spans = M.tasks.filter(function (t) { return !t.temp && t.startDate && !M.closed(t); }).map(function (t) {
+    return { t: t, from: t.startDate, to: M.effDeadline(t).date || t.startDate };
+  });
+  function spansOn(day) { return spans.filter(function (x) { return x.from <= day && day <= x.to; }); }
+  var ctx = { P: P, fin: fin, dayMap: dayMap, dlMap: dlMap, spansOn: spansOn };
 
   var y = +calMonth.slice(0, 4), m = +calMonth.slice(5, 7);
   var first = calMonth + '-01';
@@ -1765,11 +1933,17 @@ function viewCal() {
         c += '<div class="ch rest">休</div>';
       }
     }
+    var sp = spansOn(d);
+    if (sp.length) c += '<div class="cspan">' + sp.slice(0, 2).map(function (x) {
+      return '<i class="' + (x.from === d ? 'st ' : '') + (x.to === d ? 'en' : '') + '"></i>';
+    }).join('') + (sp.length > 2 ? '<em>+' + (sp.length - 2) + '</em>' : '') + '</div>';
     if (dls.length) c += '<div class="cdl' + (late ? ' late' : '') + '">〆' + dls.length + '</div>';
     h += '<button class="' + cls + '" onclick="selectDay(\'' + d + '\')">' + c + '</button>';
   }
-  h += '</div><div class="legend"><span><i class="lg"></i>やる予定/使える時間（時:分）</span><span class="late">〆n 間に合わない</span><span>〆n 締め切り</span></div></div>';
-  return h + dayDetail(selDay, ctx);
+  h += '</div><div class="legend"><span><i class="lg"></i>やる予定/使える時間（時:分）</span><span class="late">〆n 間に合わない</span><span><i class="lg" style="background:#5B8BD6"></i>期間（開始〜締切）</span><span>〆n 締め切り</span></div></div>';
+  // 今日を見ているときは、今日の分を一番上に出す（月のカレンダーはその下）
+  if (selDay === S.today) return outlookSummaryBtn() + dayDetail(selDay, ctx) + h;
+  return outlookSummaryBtn() + h + dayDetail(selDay, ctx);
 }
 
 /**
@@ -1815,11 +1989,16 @@ function splitWho(list, getT, row) {
   }
   return h;
 }
+function spanPct(from, to, d) {
+  var all = (toDate(to) - toDate(from)) / 86400000 + 1, done = (toDate(d) - toDate(from)) / 86400000 + 1;
+  return Math.max(4, Math.min(100, Math.round(done / all * 100)));
+}
 function dayDetail(d, ctx) {
   var past = d < S.today;
   var dt = toDate(d);
   var title = (dt.getUTCMonth() + 1) + '月' + dt.getUTCDate() + '日(' + W[dt.getUTCDay()] + ')' + (d === S.today ? '・今日' : '');
-  var h = '<div class="card"><b>' + title + '</b>';
+  var h = '<div class="card" id="daydetail"><div class="ddhead"><b>' + title + '</b>'
+    + (d !== S.today ? '<button class="mini" onclick="selectDay(S.today)">今日に戻る</button>' : '<span class="muted" style="font-size:12px">下に月のカレンダーがあります</span>') + '</div>';
   // 今日の欄の一番上に、期限が過ぎたタスクをすべて出す
   var overdue = d === S.today ? M.openLeaves().filter(function (t) { var e = M.effDeadline(t); return !t.temp && isPast(e.date, e.time); }).sort(calOrder) : [];
   var overIds = {};
@@ -1849,7 +2028,7 @@ function dayDetail(d, ctx) {
     var o = S.settings.overrides || {};
     var isOver = Object.prototype.hasOwnProperty.call(o, d);
     var used = ctx.dayMap[d] ? ctx.dayMap[d].used : 0;
-    h += '<div class="clabel">この日に使える時間' + (d === S.today ? '（今日の残り）' : '') + '</div>'
+    var capHtml = '<details class="daychart"><summary>⏱ この日に使える時間を変える（いま ' + (cap > 0 ? estLabel(cap) : '休み') + '）</summary>'
       + '<div class="stepper"><button class="chip step" onclick="stepCap(\'' + d + '\',-1)">−1時間</button>'
       + '<button class="chip step" onclick="stepCap(\'' + d + '\',-0.5)">−30分</button>'
       + '<div class="stepval">' + (cap > 0 ? estLabel(cap) : '休み') + '</div>'
@@ -1859,9 +2038,9 @@ function dayDetail(d, ctx) {
       + (isOver || (d === S.today && todayLeft !== defaultCap(d, S.settings))
           ? '<button class="chip" onclick="resetCap(\'' + d + '\')">標準（' + fmtH(defaultCap(d, S.settings)) + '）に戻す</button>'
           : '<span class="muted" style="align-self:center">標準の時間です（⚙︎で変更）</span>')
-      + '</div>';
+      + '</div></details>';
     var dayItems = ctx.dayMap[d] ? ctx.dayMap[d].items.map(function (x) { return { t: x.t, h: x.h }; }) : [];
-    if (dayItems.length) h += '<details class="daychart"' + (d === S.today ? ' open' : '') + '><summary>この日のタスク量の内訳</summary>' + taskChart(dayItems) + '</details>';
+    var chartHtml = dayItems.length ? '<details class="daychart"><summary>📊 この日のタスク量の内訳</summary>' + taskChart(dayItems) + '</details>' : '';
     var free = round2(cap - used);
     h += '<div class="daysum ' + (cap === 0 ? '' : free <= 0 ? 'full' : 'okbg') + '">やる予定 <b>' + fmtH(used) + '</b> ／ 使える <b>' + fmtH(cap) + '</b>'
       + (cap === 0 ? '' : free > 0 ? '　あと' + fmtH(free) + '空き' : '　いっぱい') + '</div>';
@@ -1870,17 +2049,22 @@ function dayDetail(d, ctx) {
       var rowOf = function (x) { return taskLine(x.t, pill(fmtH(x.h) + (x.part ? '（分割）' : '')) + dlPill(x.t, false), x.late ? pill('遅れ', 'late') : ''); };
       var sumH = function (a) { return fmtH(a.reduce(function (s, x) { return s + x.h; }, 0)); };
       var singles = items.filter(function (x) { return x.t.mode !== 'bucket'; }), buckets = items.filter(function (x) { return x.t.mode === 'bucket'; });
-      var notYet = singles.filter(function (x) { return !x.t.sched; }), already = singles.filter(function (x) { return x.t.sched; });
+      var notYet = singles.filter(function (x) { return !x.t.sched; }), already = singles.filter(function (x) { return x.t.sched === true; });
+      var exported = singles.filter(function (x) { return x.t.sched === 'exported'; });
       h += '<div class="clabel">この日にやる予定</div>';
       // 📌 個別に予定を入れるもの
       if (singles.length) {
         h += '<div class="modebox"><div class="modetitle">📌 個別に予定を入れるもの（' + singles.length + '件・' + sumH(singles) + '）</div>';
         if (notYet.length) {
-          h += '<div class="schedhead">📅 まだ予定に入れていない（' + notYet.length + '件・' + sumH(notYet) + '）</div>';
+          h += '<div class="schedhead">📅 まだOutlookに入れていない（' + notYet.length + '件・' + sumH(notYet) + '）</div>';
           h += splitWho(notYet, function (x) { return x.t; }, rowOf);
-        } else {
-          h += '<div class="schedhead done">✓ すべて予定に入れました</div>';
         }
+        if (exported.length) {
+          h += '<div class="schedhead exp">📤 書き出し済み・Outlookで確認待ち（' + exported.length + '件）</div>';
+          exported.forEach(function (x) { h += rowOf(x); });
+          h += '<button class="btn sub" style="width:100%;margin-top:6px" onclick="confirmExported(\'' + d + '\')">Outlookで確認した → 全部「入れた」にする</button>';
+        }
+        if (!notYet.length && !exported.length) h += '<div class="schedhead done">✓ すべてOutlookに入れました</div>';
         if (already.length) {
           h += '<details class="scheddone"><summary>✓ 予定に入れた（' + already.length + '件・' + sumH(already) + '）</summary>';
           already.forEach(function (x) { h += rowOf(x); });
@@ -1890,15 +2074,30 @@ function dayDetail(d, ctx) {
       }
       // 🗂 バケットでまとめてやるもの
       if (buckets.length) {
-        var bOn = !!(S.bucketSched || {})[d];
+        var bSt = (S.bucketSched || {})[d], bOn = bSt === true, bExp = bSt === 'exported';
         h += '<div class="modebox bucket"><div class="modetitle">🗂 バケットでまとめてやるもの</div>'
           + '<div class="buckettotal"><div><b>' + sumH(buckets) + '</b><span class="muted">' + buckets.length + '件</span></div>'
-          + '<button class="bucketbtn' + (bOn ? ' on' : '') + '" onclick="toggleBucket(\'' + d + '\')">' + (bOn ? '✓ 枠を予定に入れた' : '📅 この枠を予定に入れた？') + '</button></div>'
+          + '<button class="bucketbtn' + (bOn ? ' on' : bExp ? ' exp' : '') + '" onclick="toggleBucket(\'' + d + '\')">' + (bOn ? '✓ 枠をOutlookに入れた' : bExp ? '📤 書き出し済み・確認したら押す' : '📅 この枠をOutlookに入れた？') + '</button></div>'
           + '<div class="muted" style="font-size:12px;margin:2px 0 4px">' + sumH(buckets) + 'の枠を1つ予定に入れて、その中でまとめて片付けます</div>';
         h += splitWho(buckets, function (x) { return x.t; }, rowOf);
         h += '<button class="btn sub" style="width:100%;margin-top:10px" onclick="copyBucket(\'' + d + '\')">バケットの中身をコピー（予定の本文用）</button></div>';
       }
+      var needExport = notYet.length + (buckets.length && !(S.bucketSched || {})[d] ? 1 : 0);
+      if (needExport) h += '<button class="btn exportbtn" onclick="openExport(\'' + d + '\')">📤 まだ入れていない予定をOutlook用に書き出す（' + needExport + '件）</button>';
     }
+  }
+  if (!past) h += chartHtml + capHtml;   // 時間の調整とグラフは、タスクの一覧の下に
+  var sps = ctx.spansOn(d);
+  if (sps.length) {
+    h += '<div class="clabel">📆 期間中のタスク（' + sps.length + '件）</div>';
+    sps.forEach(function (x) {
+      var t = x.t, total = M.isLeaf(t) ? t.estimate : M.hours(t, true);
+      var daysLeft = Math.round((toDate(x.to) - toDate(d)) / 86400000);
+      h += '<div class="spanrow" onclick="' + (M.isLeaf(t) ? 'openEdit(' + t.id + ')' : 'showFamily(' + t.id + ')') + '">'
+        + '<div class="spanbar"><i style="width:' + spanPct(x.from, x.to, d) + '%"></i></div>'
+        + '<div class="nm">' + esc(t.name) + '</div><div class="meta">' + spanPill(t) + pill('残り ' + fmtH(total))
+        + pill(daysLeft > 0 ? '締切まであと' + daysLeft + '日' : '今日が締切', daysLeft > 0 ? '' : 'soon') + '</div></div>';
+    });
   }
   var dls = (ctx.dlMap[d] || []).slice().sort(calOrder);
   function lateOf(t) { var e = M.effDeadline(t); return past || isPast(e.date, e.time) || ctx.fin[t.id] > d; }
@@ -1928,11 +2127,88 @@ function dayDetail(d, ctx) {
 /** 予定（Outlookなど）に入れたかの切り替えボタン */
 function schedBtn(t) {
   if (t.mode === 'bucket') return '<span class="bucketmark" title="バケットでまとめてやる">🗂<span>バケット</span></span>';
-  return '<button class="schedbtn' + (t.sched ? ' on' : '') + '" onclick="event.stopPropagation();toggleSched(' + t.id + ')" aria-label="予定に入れたか">'
-    + (t.sched ? '📅<span>入れた</span>' : '📅<span>未</span>') + '</button>';
+  var st = t.sched === true ? 'on' : t.sched === 'exported' ? 'exp' : '';
+  return '<button class="schedbtn ' + st + '" onclick="event.stopPropagation();toggleSched(' + t.id + ')" aria-label="予定に入れたか">'
+    + (st === 'on' ? '📅<span>入れた</span>' : st === 'exp' ? '📤<span>確認</span>' : '📅<span>未</span>') + '</button>';
+}
+// ---- Outlook用の予定ファイル（.ics）を書き出す ----
+var EX = null;
+function exportItems(d) {
+  var day = planNow().days.filter(function (x) { return x.date === d; })[0];
+  var its = day ? day.items.slice().sort(function (a, b) { return calOrder(a.t, b.t); }) : [];
+  var singles = [], seen = {}, bucket = [];
+  its.forEach(function (x) {
+    if (x.t.mode === 'bucket') bucket.push(x);
+    else if (!x.t.sched && !seen[x.t.id]) { seen[x.t.id] = 1; singles.push(x); }
+  });
+  var withBucket = bucket.length && !(S.bucketSched || {})[d];
+  return { singles: singles, bucket: withBucket ? bucket : [] };
+}
+function openExport(d) {
+  var start = '09:00';
+  if (d === S.today) { var m = Math.ceil(hmToMin(nowHM()) / 15) * 15; if (m > 9 * 60) start = minToHm(Math.min(m, 23 * 60)); }
+  EX = { date: d, start: start };
+  renderExport();
+}
+/** 開始時刻から順番に時間を並べる */
+function exportPlan() {
+  var r = exportItems(EX.date), m = hmToMin(EX.start), ev = [];
+  r.singles.forEach(function (x) {
+    var len = Math.max(15, Math.round(x.h * 60 / 15) * 15);
+    ev.push({ title: x.t.name, start: m, end: m + len, desc: (M.path(x.t) ? M.path(x.t) + '\n' : '') + '優先度：' + PRI_LABEL[x.t.priority], ids: [x.t.id] });
+    m += len;
+  });
+  if (r.bucket.length) {
+    var tot = r.bucket.reduce(function (s, x) { return s + x.h; }, 0), len = Math.max(15, Math.round(tot * 60 / 15) * 15);
+    ev.push({ title: 'タスクバケット（' + r.bucket.length + '件）', start: m, end: m + len, bucket: true,
+      desc: r.bucket.map(function (x) { return '・' + x.t.name + '（' + fmtH(x.h) + '）'; }).join('\n') });
+    m += len;
+  }
+  return ev;
+}
+function renderExport() {
+  var ev = exportPlan(), dt = toDate(EX.date);
+  var h = '<h3>📤 Outlook用に書き出す</h3><p class="muted" style="margin:0 0 6px">' + (dt.getUTCMonth() + 1) + '/' + dt.getUTCDate() + '(' + W[dt.getUTCDay()] + ') のまだ入れていない予定を、Outlookで開けるファイルにします。</p>'
+    + '<label>開始時刻</label><input type="time" class="dateinput" value="' + EX.start + '" onchange="EX.start=this.value||\'09:00\';renderExport()">'
+    + '<div class="clabel">書き出す予定（' + ev.length + '件）</div><div class="tmpl">';
+  ev.forEach(function (e) {
+    h += '<div class="trow"><span class="muted" style="width:92px;flex:none">' + minToHm(e.start).replace(/^0/, '') + '〜' + minToHm(e.end).replace(/^0/, '') + '</span><span class="tn">' + (e.bucket ? '🗂 ' : '📌 ') + esc(e.title) + '</span></div>';
+  });
+  h += '</div><p class="muted" style="font-size:12px">時間は開始時刻から順番に並べた目安です。Outlookで開いたあと、空いている時間に動かしてください。</p>'
+    + '<div class="btns"><button class="btn sub" onclick="closeModal()">やめる</button><button class="btn" onclick="doExport()">書き出す</button></div>';
+  openPanel(h);
+}
+function icsEsc(s) { return String(s).replace(/\\/g, '\\\\').replace(/;/g, '\;').replace(/,/g, '\\,').replace(/\n/g, '\\n'); }
+function icsTime(d, m) { return d.replace(/-/g, '') + 'T' + pad(Math.floor(m / 60) % 24) + pad(m % 60) + '00'; }
+function doExport() {
+  var ev = exportPlan(), d = EX.date, now = new Date(), stamp = now.getUTCFullYear() + pad(now.getUTCMonth() + 1) + pad(now.getUTCDate()) + 'T' + pad(now.getUTCHours()) + pad(now.getUTCMinutes()) + '00Z';
+  var L = ['BEGIN:VCALENDAR', 'VERSION:2.0', 'PRODID:-//task-bunkai//JA', 'CALSCALE:GREGORIAN', 'METHOD:PUBLISH'];
+  ev.forEach(function (e, i) {
+    L.push('BEGIN:VEVENT', 'UID:' + d + '-' + e.start + '-' + i + '-' + now.getTime() + '@task-bunkai', 'DTSTAMP:' + stamp,
+      'DTSTART:' + icsTime(d, e.start), 'DTEND:' + icsTime(d, Math.min(e.end, 1439)), 'SUMMARY:' + icsEsc(e.title), 'DESCRIPTION:' + icsEsc(e.desc || ''), 'END:VEVENT');
+  });
+  L.push('END:VCALENDAR');
+  var blob = new Blob([L.join('\r\n')], { type: 'text/calendar;charset=utf-8' });
+  var a = document.createElement('a');
+  a.href = URL.createObjectURL(blob); a.download = '予定_' + d + '.ics';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function () { URL.revokeObjectURL(a.href); }, 3000);
+  // 書き出したものは「確認待ち」にする
+  var ids = [];
+  ev.forEach(function (e) { if (e.ids) ids = ids.concat(e.ids); });
+  var hasBucket = ev.some(function (e) { return e.bucket; });
+  callRaw('markExported', [d, ids, hasBucket], function () {
+    closeModal();
+    toast('書き出しました。Outlookで開いて追加したら「確認した」を押してください');
+  });
+}
+function confirmExported(d) {
+  var ids = (planNow().days.filter(function (x) { return x.date === d; })[0] || { items: [] }).items
+    .filter(function (x) { return x.t.sched === 'exported'; }).map(function (x) { return x.t.id; });
+  callRaw('confirmExported', [ids], function () { toast('全部「入れた」にしました'); });
 }
 function toggleBucket(d) {
-  var v = !(S.bucketSched || {})[d];
+  var v = (S.bucketSched || {})[d] === true ? false : true;
   S.bucketSched = S.bucketSched || {}; if (v) S.bucketSched[d] = true; else delete S.bucketSched[d];
   render();
   callRaw('setBucketSched', [d, v], function () { toast(v ? 'バケットの枠を予定に入れた にしました' : '戻しました'); });
@@ -1945,16 +2221,16 @@ function copyBucket(d) {
 }
 function toggleSched(id) {
   var t = M.byId[id]; if (!t || t.temp) return;
-  var v = !t.sched;
+  var v = t.sched === true ? false : true;   // 未・書き出し済み → 入れた、入れた → 未
   S.tasks.forEach(function (x) { if (x.id === id) x.sched = v; });
   render();
-  callRaw('setScheduled', [id, v], function () { toast(v ? '予定に入れた にしました' : '未スケジュールに戻しました'); });
+  callRaw('setScheduled', [id, v], function () { toast(v ? 'Outlookに入れた にしました' : '未に戻しました'); });
 }
 function taskLine(t, meta, tags) {
   var path = M.path(t);
-  return '<div class="row p' + t.priority + (t.sched ? ' scheduled' : '') + '"><input type="checkbox" class="chk" onchange="toggleDone(' + t.id + ',this.checked)" aria-label="完了">'
+  return '<div class="row p' + t.priority + (t.sched === true ? ' scheduled' : '') + '"><input type="checkbox" class="chk" onchange="toggleDone(' + t.id + ',this.checked)" aria-label="完了">'
     + '<div class="main" onclick="openEdit(' + t.id + ')"><div class="nm">' + esc(t.name) + '</div>'
-    + '<div class="meta">' + priBadge(t.priority) + whoBadge(t) + tags + meta + '</div>'
+    + '<div class="meta">' + priBadge(t.priority) + whoBadge(t) + tags + meta + spanPill(t) + '</div>'
     + (path ? '<button class="pathlink" onclick="event.stopPropagation();showFamily(' + t.id + ')">' + esc(path) + '<span>全体を見る ›</span></button>' : '')
     + '</div>' + schedBtn(t) + '</div>';
 }
@@ -1963,6 +2239,9 @@ function selectDay(d) {
   selDay = d;
   if (d.slice(0, 7) !== calMonth) calMonth = d.slice(0, 7);
   render();
+  var el = $('daydetail');
+  if (d === S.today) window.scrollTo(0, 0);
+  else if (el) el.scrollIntoView({ block: 'start' });
 }
 function moveMonth(n) {
   var y = +calMonth.slice(0, 4), m = +calMonth.slice(5, 7) + n;
@@ -2318,6 +2597,7 @@ function treeRow(t, depth) {
   if (M.effDeadline(t).own) meta.push(dlPill(t, done));
   meta.push(priBadge(t.priority));
   meta.push(whoBadge(t));
+  if (t.startDate) meta.push(spanPill(t));
   if (t.mode === 'bucket') meta.push('<span class="pill bucketpill">🗂 バケット</span>');
   var progress = '';
   if (!leaf) {
@@ -2452,7 +2732,7 @@ function openEdit(id) {
     + '<div class="clabel">予定への入れ方</div><div class="chips" id="eModeChips">'
     + '<button class="chip modechip' + (t.mode !== 'bucket' ? ' on' : '') + '" data-m="single" onclick="pickEMode(this)">📌 個別に予定を入れる</button>'
     + '<button class="chip modechip bucket' + (t.mode === 'bucket' ? ' on' : '') + '" data-m="bucket" onclick="pickEMode(this)">🗂 バケットでまとめてやる</button></div>'
-    + '<label class="showdone" style="margin:12px 0 0"><input type="checkbox" class="chk" id="eSched" ' + (t.sched ? 'checked' : '') + '>📅 予定（Outlookなど）に入れた（個別のとき）</label>'
+    + '<label class="showdone" style="margin:12px 0 0"><input type="checkbox" class="chk" id="eSched" ' + (t.sched === true ? 'checked' : '') + '>📅 Outlookに入れたのを確認した（個別のとき）</label>'
     + '<div class="clabel">進め方</div><div class="chips" id="eWhoChips">'
     + '<button class="chip whochip' + (t.who !== 'others' && t.who !== 'gap' ? ' on' : '') + '" data-w="self" onclick="pickEWho(this)">🙋 自分で完結</button>'
     + '<button class="chip whochip people' + (t.who === 'others' ? ' on' : '') + '" data-w="others" onclick="pickEWho(this)">👥 人に聞く・依頼</button>'
@@ -2460,6 +2740,7 @@ function openEdit(id) {
     + '<label>締め切り</label><div class="dateline" style="margin-top:0"><input id="eDl" type="date" class="dateinput" value="' + esc(t.deadline) + '">'
     + '<input id="eTm" type="time" class="dateinput" style="max-width:130px" value="' + esc(t.deadlineTime || '') + '"></div>'
     + '<div class="muted" style="margin-top:4px">時刻は空欄でもOKです</div>'
+    + '<label>開始日（何日かかけてやるとき・空欄でもOK）</label><input id="eSt" type="date" class="dateinput" value="' + esc(t.startDate || '') + '">'
     + (!t.deadline && inh.date ? '<div class="muted">空欄のときは上の締切（' + dayLabel(inh.date) + '）を使います</div>' : '')
     + (t.recurId && ruleOf(t.recurId)
         ? '<div class="recurnote">🔁 繰り返しの予定です（' + recurWhen(ruleOf(t.recurId)) + '）</div>'
@@ -2586,7 +2867,7 @@ function eWho() { var b = document.querySelector('#eWhoChips .chip.on'); return 
 function saveEdit(id) {
   var name = $('eName').value.trim();
   if (!name) { toast('タスク名を入れてください'); return; }
-  call('updateTask', [id, { name: name, estimate: (parseFloat($('eEst').value) || 0) / 60, priority: +$('ePri').value, deadline: $('eDl').value, deadlineTime: $('eDl').value ? $('eTm').value : '', who: eWho(), mode: eMode(), sched: $('eSched').checked }],
+  call('updateTask', [id, { name: name, estimate: (parseFloat($('eEst').value) || 0) / 60, priority: +$('ePri').value, deadline: $('eDl').value, deadlineTime: $('eDl').value ? $('eTm').value : '', startDate: $('eSt') ? $('eSt').value : '', who: eWho(), mode: eMode(), sched: $('eSched').checked ? true : (M.byId[id].sched === 'exported' ? 'exported' : false) }],
     function () { closeModal(); toast('保存しました'); });
 }
 function removeTask(id) {
