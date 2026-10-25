@@ -359,6 +359,15 @@
   #daydetail { scroll-margin-top:150px; }
   .pastrow { padding:7px 4px; font-size:14px; border-bottom:1px solid var(--line); }
   .pastrow.done { color:var(--green); }
+  .spanhead { cursor:pointer; }
+  .spanrow { cursor:default; }
+  .progline { display:flex; align-items:center; gap:8px; margin-top:8px; }
+  .progbar { position:relative; flex:1; height:10px; background:var(--soft); border-radius:5px; }
+  .progbar i { display:block; height:100%; background:#5B8BD6; border-radius:5px; }
+  .progbar b { position:absolute; top:-3px; width:2px; height:16px; background:var(--ink); opacity:.55; transform:translateX(-1px); }
+  .prognum { font-weight:700; font-size:15px; min-width:44px; text-align:right; }
+  .progctl { display:flex; align-items:center; gap:6px; margin-top:6px; flex-wrap:wrap; }
+  .progctl .muted { font-size:12px; flex:1; min-width:110px; }
   .showdone { display:flex; align-items:center; gap:8px; font-size:14px; color:var(--sub); margin:6px 4px; }
 
   /* ---- やる順 ---- */
@@ -570,7 +579,7 @@
       snaps: db.snaps || {},
       tasks: db.tasks.map(function (t) {
         return { id: t.id, parentId: t.parentId, level: t.level, name: t.name, estimate: t.estimate,
-                 priority: t.priority, deadline: t.deadline, deadlineTime: t.deadlineTime || '', done: t.done, recurId: t.recurId || null, tmplId: t.tmplId || null, who: normWho(t.who), startDate: t.startDate || '', sched: t.sched === 'exported' ? 'exported' : !!t.sched, mode: t.mode === 'bucket' ? 'bucket' : 'single' };
+                 priority: t.priority, deadline: t.deadline, deadlineTime: t.deadlineTime || '', done: t.done, recurId: t.recurId || null, tmplId: t.tmplId || null, who: normWho(t.who), startDate: t.startDate || '', progress: t.progress || 0, sched: t.sched === 'exported' ? 'exported' : !!t.sched, mode: t.mode === 'bucket' ? 'bucket' : 'single' };
       }),
       settings: db.settings, today: todayStr()
     }));
@@ -628,6 +637,12 @@
       Object.keys(db.snaps).forEach(function (k) { if (k < old) delete db.snaps[k]; });
       save(db);
       return true;
+    },
+    setProgress: function (id, v) {
+      var db = load(), t = db.tasks.filter(function (x) { return x.id === Number(id); })[0];
+      if (!t) throw new Error('タスクが見つかりません');
+      t.progress = Math.max(0, Math.min(100, Number(v) || 0));
+      return finish(db);
     },
     setScheduled: function (id, v) {
       var db = load(), t = db.tasks.filter(function (x) { return x.id === Number(id); })[0];
@@ -777,6 +792,7 @@
       if (f.who) t.who = normWho(f.who);
       if (f.sched !== undefined) t.sched = f.sched === 'exported' ? 'exported' : !!f.sched;
       if (f.startDate !== undefined) t.startDate = f.startDate || '';
+      if (f.progress !== undefined) t.progress = Math.max(0, Math.min(100, Number(f.progress) || 0));
       if (f.mode) t.mode = f.mode === 'bucket' ? 'bucket' : 'single';
       return finish(db);
     },
@@ -1023,7 +1039,7 @@ function buildModel(tasks) {
   };
   M.hours = function (t, openOnly) {
     return round2(M.leaves(t).filter(function (l) { return !openOnly || !M.closed(l); })
-      .reduce(function (s, l) { return s + l.estimate; }, 0));
+      .reduce(function (s, l) { return s + (openOnly ? l.estimate * (1 - (l.progress || 0) / 100) : l.estimate); }, 0));
   };
   M.openLeaves = function () {
     if (!openMemo) openMemo = tasks.filter(function (t) { return M.isLeaf(t) && !M.closed(t); });
@@ -1093,7 +1109,7 @@ function makePlan(M, today, todayLeft, settings) {
   // まずは締め切りが近い順（同じなら優先度が高い順）
   var base = M.openLeaves().map(function (t) {
     var e = M.effDeadline(t);
-    return { t: t, est: t.estimate, dl: e.date, st: M.effStart(t), key: e.date ? e.date + ' ' + (e.time || '99:99') : '' };
+    return { t: t, est: t.estimate * (1 - (t.progress || 0) / 100), dl: e.date, st: M.effStart(t), key: e.date ? e.date + ' ' + (e.time || '99:99') : '' };
   }).sort(function (a, b) {
     var da = a.key || '9999-12-31', db = b.key || '9999-12-31';
     if (da !== db) return da < db ? -1 : 1;
@@ -1618,7 +1634,7 @@ function spanPill(t) {
   if (!st) return '';
   var sd = toDate(st), md = (sd.getUTCMonth() + 1) + '/' + sd.getUTCDate();
   var ed = e.date ? toDate(e.date) : null;
-  return '<span class="pill spanpill">📆 ' + md + '〜' + (ed ? (ed.getUTCMonth() + 1) + '/' + ed.getUTCDate() : '') + '</span>';
+  return '<span class="pill spanpill">📆 ' + md + '〜' + (ed ? (ed.getUTCMonth() + 1) + '/' + ed.getUTCDate() : '') + (t.startDate ? '・' + (t.progress || 0) + '%' : '') + '</span>';
 }
 function pill(text, cls) { return '<span class="pill' + (cls ? ' ' + cls : '') + '">' + text + '</span>'; }
 
@@ -2051,13 +2067,15 @@ function dueGroup(e) {
   return 2;
 }
 function calOrder(a, b) {
+  // 1. 締め切りの日付が早い順（期限切れ → 今日 → 明日…、締め切りなしは最後）
   var ea = M.effDeadline(a), eb = M.effDeadline(b);
-  var ta = dueGroup(ea), tb = dueGroup(eb);
-  if (ta !== tb) return ta - tb;
+  var da = ea.date || '9999-12-31', db = eb.date || '9999-12-31';
+  if (da !== db) return da < db ? -1 : 1;
+  // 2. 同じ日なら優先度が高い順 → 3. 人に聞くもの → 4. 時刻が早い順
   if (a.priority !== b.priority) return b.priority - a.priority;
   if (whoRank(a) !== whoRank(b)) return whoRank(a) - whoRank(b);
-  var ka = ea.date ? ea.date + ' ' + (ea.time || '99:99') : '9999', kb = eb.date ? eb.date + ' ' + (eb.time || '99:99') : '9999';
-  if (ka !== kb) return ka < kb ? -1 : 1;
+  var ta = ea.time || '99:99', tb = eb.time || '99:99';
+  if (ta !== tb) return ta < tb ? -1 : 1;
   return a.id - b.id;
 }
 /** 「人に聞く・依頼」と「自分で完結」に分けて並べる。getT で一覧の要素からタスクを取り出し、row で1行を作る */
@@ -2084,6 +2102,14 @@ function splitWho(list, getT, row) {
 function spanPct(from, to, d) {
   var all = (toDate(to) - toDate(from)) / 86400000 + 1, done = (toDate(d) - toDate(from)) / 86400000 + 1;
   return Math.max(4, Math.min(100, Math.round(done / all * 100)));
+}
+function stepProg(id, delta) {
+  var t = M.byId[id]; if (!t) return;
+  var v = Math.max(0, Math.min(100, (t.progress || 0) + delta));
+  S.tasks.forEach(function (x) { if (x.id === id) x.progress = v; });
+  PLAN = null; render();
+  clearTimeout(window._progT);
+  window._progT = setTimeout(function () { google.script.run.withSuccessHandler(function (res) { if (res && res.tasks) S = res; }).setProgress(id, v); }, 500);
 }
 function dayDetail(d, ctx) {
   var past = d < S.today;
@@ -2183,12 +2209,20 @@ function dayDetail(d, ctx) {
   if (sps.length) {
     h += '<div class="clabel">📆 期間中のタスク（' + sps.length + '件）</div>';
     sps.forEach(function (x) {
-      var t = x.t, total = M.isLeaf(t) ? t.estimate : M.hours(t, true);
+      var t = x.t, pr = t.progress || 0;
+      var total = M.isLeaf(t) ? t.estimate * (1 - pr / 100) : M.hours(t, true);
       var daysLeft = Math.round((toDate(x.to) - toDate(d)) / 86400000);
-      h += '<div class="spanrow" onclick="' + (M.isLeaf(t) ? 'openEdit(' + t.id + ')' : 'showFamily(' + t.id + ')') + '">'
-        + '<div class="spanbar"><i style="width:' + spanPct(x.from, x.to, d) + '%"></i></div>'
-        + '<div class="nm">' + esc(t.name) + '</div><div class="meta">' + spanPill(t) + pill('残り ' + fmtH(total))
-        + pill(daysLeft > 0 ? '締切まであと' + daysLeft + '日' : '今日が締切', daysLeft > 0 ? '' : 'soon') + '</div></div>';
+      var expect = spanPct(x.from, x.to, d), ok = pr >= expect - 10;
+      h += '<div class="spanrow">'
+        + '<div class="spanhead" onclick="' + (M.isLeaf(t) ? 'openEdit(' + t.id + ')' : 'showFamily(' + t.id + ')') + '"><div class="nm">' + esc(t.name) + '</div>'
+        + '<div class="meta">' + spanPill(t) + pill('残り ' + fmtH(total))
+        + pill(daysLeft > 0 ? '締切まであと' + daysLeft + '日' : '今日が締切', daysLeft > 0 ? '' : 'soon') + '</div></div>'
+        + '<div class="progline"><div class="progbar"><i style="width:' + pr + '%"></i><b style="left:' + expect + '%" title="予定どおりなら"></b></div>'
+        + '<span class="prognum">' + pr + '%</span></div>'
+        + '<div class="progctl"><button class="chip step" onclick="stepProg(' + t.id + ',-10)">−10%</button>'
+        + '<span class="muted">予定どおりなら ' + expect + '%</span>'
+        + '<span class="pill ' + (pr >= 100 ? 'good' : ok ? 'good' : 'soon') + '">' + (pr >= 100 ? '完了' : ok ? '順調' : '遅れ気味') + '</span>'
+        + '<button class="chip step" onclick="stepProg(' + t.id + ',10)">＋10%</button></div></div>';
     });
   }
   var dls = (ctx.dlMap[d] || []).slice().sort(calOrder);
@@ -2833,6 +2867,7 @@ function openEdit(id) {
     + '<input id="eTm" type="time" class="dateinput" style="max-width:130px" value="' + esc(t.deadlineTime || '') + '"></div>'
     + '<div class="muted" style="margin-top:4px">時刻は空欄でもOKです</div>'
     + '<label>開始日（何日かかけてやるとき・空欄でもOK）</label><input id="eSt" type="date" class="dateinput" value="' + esc(t.startDate || '') + '">'
+    + '<label>進捗（％・開始日があるとき）</label><input id="ePr" type="number" min="0" max="100" step="10" inputmode="numeric" class="dateinput" style="max-width:120px" value="' + (t.progress || 0) + '">'
     + (!t.deadline && inh.date ? '<div class="muted">空欄のときは上の締切（' + dayLabel(inh.date) + '）を使います</div>' : '')
     + (t.recurId && ruleOf(t.recurId)
         ? '<div class="recurnote">🔁 繰り返しの予定です（' + recurWhen(ruleOf(t.recurId)) + '）</div>'
@@ -2959,7 +2994,7 @@ function eWho() { var b = document.querySelector('#eWhoChips .chip.on'); return 
 function saveEdit(id) {
   var name = $('eName').value.trim();
   if (!name) { toast('タスク名を入れてください'); return; }
-  call('updateTask', [id, { name: name, estimate: (parseFloat($('eEst').value) || 0) / 60, priority: +$('ePri').value, deadline: $('eDl').value, deadlineTime: $('eDl').value ? $('eTm').value : '', startDate: $('eSt') ? $('eSt').value : '', who: eWho(), mode: eMode(), sched: $('eSched').checked ? true : (M.byId[id].sched === 'exported' ? 'exported' : false) }],
+  call('updateTask', [id, { name: name, estimate: (parseFloat($('eEst').value) || 0) / 60, priority: +$('ePri').value, deadline: $('eDl').value, deadlineTime: $('eDl').value ? $('eTm').value : '', startDate: $('eSt') ? $('eSt').value : '', progress: Math.max(0, Math.min(100, +$('ePr').value || 0)), who: eWho(), mode: eMode(), sched: $('eSched').checked ? true : (M.byId[id].sched === 'exported' ? 'exported' : false) }],
     function () { closeModal(); toast('保存しました'); });
 }
 function removeTask(id) {
