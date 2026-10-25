@@ -368,6 +368,12 @@
   .prognum { font-weight:700; font-size:15px; min-width:44px; text-align:right; }
   .progctl { display:flex; align-items:center; gap:6px; margin-top:6px; flex-wrap:wrap; }
   .progctl .muted { font-size:12px; flex:1; min-width:110px; }
+  .todaybox { margin-top:10px; padding:10px 12px; border-radius:12px; background:var(--red-soft); }
+  .tlabel { font-size:13px; font-weight:700; color:var(--red); }
+  .tbig { display:flex; align-items:baseline; gap:8px; margin:2px 0; }
+  .tbig b { font-size:28px; color:var(--ink); } .tbig span { font-size:14px; color:var(--sub); font-weight:700; }
+  .ahead { margin-top:14px; border:1px dashed var(--line); border-radius:12px; padding:8px 10px; }
+  .ahead summary { font-size:14px; font-weight:700; color:var(--blue); cursor:pointer; }
   .showdone { display:flex; align-items:center; gap:8px; font-size:14px; color:var(--sub); margin:6px 4px; }
 
   /* ---- やる順 ---- */
@@ -2111,6 +2117,46 @@ function stepProg(id, delta) {
   clearTimeout(window._progT);
   window._progT = setTimeout(function () { google.script.run.withSuccessHandler(function (res) { if (res && res.tasks) S = res; }).setProgress(id, v); }, 500);
 }
+/** やる予定の一覧（個別／バケット）を作る */
+function planBlock(items, d) {
+  var h = '';
+      var rowOf = function (x) { return taskLine(x.t, pill(fmtH(x.h) + (x.part ? '（分割）' : '')) + dlPill(x.t, false), x.late ? pill('遅れ', 'late') : ''); };
+      var sumH = function (a) { return fmtH(a.reduce(function (s, x) { return s + x.h; }, 0)); };
+      var singles = items.filter(function (x) { return x.t.mode !== 'bucket'; }), buckets = items.filter(function (x) { return x.t.mode === 'bucket'; });
+      var notYet = singles.filter(function (x) { return !x.t.sched; }), already = singles.filter(function (x) { return x.t.sched === true; });
+      var exported = singles.filter(function (x) { return x.t.sched === 'exported'; });
+      // 📌 個別に予定を入れるもの
+      if (singles.length) {
+        h += '<div class="modebox"><div class="modetitle">📌 個別に予定を入れるもの（' + singles.length + '件・' + sumH(singles) + '）</div>';
+        if (notYet.length) {
+          h += '<div class="schedhead">📅 まだOutlookに入れていない（' + notYet.length + '件・' + sumH(notYet) + '）</div>';
+          h += splitWho(notYet, function (x) { return x.t; }, rowOf);
+        }
+        if (exported.length) {
+          h += '<div class="schedhead exp">📤 書き出し済み・Outlookで確認待ち（' + exported.length + '件）</div>';
+          exported.forEach(function (x) { h += rowOf(x); });
+          h += '<button class="btn sub" style="width:100%;margin-top:6px" onclick="confirmExported(\'' + d + '\')">Outlookで確認した → 全部「入れた」にする</button>';
+        }
+        if (!notYet.length && !exported.length) h += '<div class="schedhead done">✓ すべてOutlookに入れました</div>';
+        if (already.length) {
+          h += '<details class="scheddone"><summary>✓ 予定に入れた（' + already.length + '件・' + sumH(already) + '）</summary>';
+          already.forEach(function (x) { h += rowOf(x); });
+          h += '</details>';
+        }
+        h += '</div>';
+      }
+      // 🗂 バケットでまとめてやるもの
+      if (buckets.length) {
+        var bSt = (S.bucketSched || {})[d], bOn = bSt === true, bExp = bSt === 'exported';
+        h += '<div class="modebox bucket"><div class="modetitle">🗂 バケットでまとめてやるもの</div>'
+          + '<div class="buckettotal"><div><b>' + sumH(buckets) + '</b><span class="muted">' + buckets.length + '件</span></div>'
+          + '<button class="bucketbtn' + (bOn ? ' on' : bExp ? ' exp' : '') + '" onclick="toggleBucket(\'' + d + '\')">' + (bOn ? '✓ 枠をOutlookに入れた' : bExp ? '📤 書き出し済み・確認したら押す' : '📅 この枠をOutlookに入れた？') + '</button></div>'
+          + '<div class="muted" style="font-size:12px;margin:2px 0 4px">' + sumH(buckets) + 'の枠を1つ予定に入れて、その中でまとめて片付けます</div>';
+        h += splitWho(buckets, function (x) { return x.t; }, rowOf);
+        h += '<button class="btn sub" style="width:100%;margin-top:10px" onclick="copyBucket(\'' + d + '\')">バケットの中身をコピー（予定の本文用）</button></div>';
+      }
+  return h;
+}
 function dayDetail(d, ctx) {
   var past = d < S.today;
   var dt = toDate(d);
@@ -2164,43 +2210,29 @@ function dayDetail(d, ctx) {
       + (cap === 0 ? '' : free > 0 ? '　あと' + fmtH(free) + '空き' : '　いっぱい') + '</div>';
     var items = (ctx.dayMap[d] ? ctx.dayMap[d].items : []).filter(function (x) { return !overIds[x.t.id]; }).sort(function (a, b) { return calOrder(a.t, b.t); });
     if (items.length) {
-      var rowOf = function (x) { return taskLine(x.t, pill(fmtH(x.h) + (x.part ? '（分割）' : '')) + dlPill(x.t, false), x.late ? pill('遅れ', 'late') : ''); };
-      var sumH = function (a) { return fmtH(a.reduce(function (s, x) { return s + x.h; }, 0)); };
-      var singles = items.filter(function (x) { return x.t.mode !== 'bucket'; }), buckets = items.filter(function (x) { return x.t.mode === 'bucket'; });
-      var notYet = singles.filter(function (x) { return !x.t.sched; }), already = singles.filter(function (x) { return x.t.sched === true; });
-      var exported = singles.filter(function (x) { return x.t.sched === 'exported'; });
-      h += '<div class="clabel">この日にやる予定</div>';
-      // 📌 個別に予定を入れるもの
-      if (singles.length) {
-        h += '<div class="modebox"><div class="modetitle">📌 個別に予定を入れるもの（' + singles.length + '件・' + sumH(singles) + '）</div>';
-        if (notYet.length) {
-          h += '<div class="schedhead">📅 まだOutlookに入れていない（' + notYet.length + '件・' + sumH(notYet) + '）</div>';
-          h += splitWho(notYet, function (x) { return x.t; }, rowOf);
+      var sumH2 = function (a) { return a.reduce(function (s, x) { return s + x.h; }, 0); };
+      if (d === S.today) {
+        // 今日：今日が締め切りのもの と 明日以降のもの（前倒し）を分ける
+        var must = items.filter(function (x) { var e = M.effDeadline(x.t); return e.date && e.date <= S.today; });
+        var ahead = items.filter(function (x) { var e = M.effDeadline(x.t); return !(e.date && e.date <= S.today); });
+        var overH = overdue.reduce(function (s, t) { return s + t.estimate * (1 - (t.progress || 0) / 100); }, 0);
+        var mustN = must.map(function (x) { return x.t.id; }).filter(function (v, i, a) { return a.indexOf(v) === i; }).length + overdue.length;
+        h += '<div class="todaybox"><div class="tlabel">今日中にやること</div><div class="tbig"><b>' + fmtH(sumH2(must) + overH) + '</b><span>' + mustN + '件</span></div>'
+          + '<div class="muted" style="font-size:12px">' + (overdue.length ? '期限切れ ' + overdue.length + '件を含みます・' : '') + (ahead.length ? '余裕があれば前倒し ' + fmtH(sumH2(ahead)) : '前倒しできるものはありません') + '</div></div>';
+        if (must.length) {
+          h += '<div class="clabel">🔴 今日が締め切り（' + must.length + '件・' + fmtH(sumH2(must)) + '）</div>' + planBlock(must, d);
+        } else if (!overdue.length) {
+          h += '<div class="schedhead done" style="margin-top:10px">✓ 今日が締め切りのタスクはありません</div>';
         }
-        if (exported.length) {
-          h += '<div class="schedhead exp">📤 書き出し済み・Outlookで確認待ち（' + exported.length + '件）</div>';
-          exported.forEach(function (x) { h += rowOf(x); });
-          h += '<button class="btn sub" style="width:100%;margin-top:6px" onclick="confirmExported(\'' + d + '\')">Outlookで確認した → 全部「入れた」にする</button>';
+        if (ahead.length) {
+          h += '<details class="ahead"><summary>⏩ 余裕があれば前倒し：明日以降の締め切り（' + ahead.length + '件・' + fmtH(sumH2(ahead)) + '）</summary>' + planBlock(ahead, d) + '</details>';
         }
-        if (!notYet.length && !exported.length) h += '<div class="schedhead done">✓ すべてOutlookに入れました</div>';
-        if (already.length) {
-          h += '<details class="scheddone"><summary>✓ 予定に入れた（' + already.length + '件・' + sumH(already) + '）</summary>';
-          already.forEach(function (x) { h += rowOf(x); });
-          h += '</details>';
-        }
-        h += '</div>';
+      } else {
+        h += '<div class="clabel">この日にやる予定</div>' + planBlock(items, d);
       }
-      // 🗂 バケットでまとめてやるもの
-      if (buckets.length) {
-        var bSt = (S.bucketSched || {})[d], bOn = bSt === true, bExp = bSt === 'exported';
-        h += '<div class="modebox bucket"><div class="modetitle">🗂 バケットでまとめてやるもの</div>'
-          + '<div class="buckettotal"><div><b>' + sumH(buckets) + '</b><span class="muted">' + buckets.length + '件</span></div>'
-          + '<button class="bucketbtn' + (bOn ? ' on' : bExp ? ' exp' : '') + '" onclick="toggleBucket(\'' + d + '\')">' + (bOn ? '✓ 枠をOutlookに入れた' : bExp ? '📤 書き出し済み・確認したら押す' : '📅 この枠をOutlookに入れた？') + '</button></div>'
-          + '<div class="muted" style="font-size:12px;margin:2px 0 4px">' + sumH(buckets) + 'の枠を1つ予定に入れて、その中でまとめて片付けます</div>';
-        h += splitWho(buckets, function (x) { return x.t; }, rowOf);
-        h += '<button class="btn sub" style="width:100%;margin-top:10px" onclick="copyBucket(\'' + d + '\')">バケットの中身をコピー（予定の本文用）</button></div>';
-      }
-      var needExport = notYet.length + (buckets.length && !(S.bucketSched || {})[d] ? 1 : 0);
+      var notYetAll = items.filter(function (x) { return x.t.mode !== 'bucket' && !x.t.sched; }).map(function (x) { return x.t.id; }).filter(function (v, i, a) { return a.indexOf(v) === i; });
+      var hasBucket = items.some(function (x) { return x.t.mode === 'bucket'; });
+      var needExport = notYetAll.length + (hasBucket && !(S.bucketSched || {})[d] ? 1 : 0);
       if (needExport) h += '<button class="btn exportbtn" onclick="openExport(\'' + d + '\')">📤 まだ入れていない予定をOutlook用に書き出す（' + needExport + '件）</button>';
     }
   }
@@ -2225,7 +2257,7 @@ function dayDetail(d, ctx) {
         + '<button class="chip step" onclick="stepProg(' + t.id + ',10)">＋10%</button></div></div>';
     });
   }
-  var dls = (ctx.dlMap[d] || []).slice().sort(calOrder);
+  var dls = d === S.today ? [] : (ctx.dlMap[d] || []).slice().sort(calOrder);
   function lateOf(t) { var e = M.effDeadline(t); return past || isPast(e.date, e.time) || ctx.fin[t.id] > d; }
   if (dls.length) {
     var lateN = dls.filter(lateOf).length;
