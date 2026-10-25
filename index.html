@@ -368,6 +368,11 @@
   .prognum { font-weight:700; font-size:15px; min-width:44px; text-align:right; }
   .progctl { display:flex; align-items:center; gap:6px; margin-top:6px; flex-wrap:wrap; }
   .progctl .muted { font-size:12px; flex:1; min-width:110px; }
+  .viewsw { display:flex; gap:6px; margin-top:8px; }
+  .viewsw button { flex:1; padding:9px 6px; border-radius:10px; border:1px solid var(--line); background:transparent; color:var(--sub); font-size:14px; font-weight:700; }
+  .viewsw button.on { background:var(--blue); border-color:var(--blue); color:#fff; }
+  .simplesum { margin-top:10px; font-size:15px; } .simplesum b { font-size:18px; }
+  .simplelist { margin-top:4px; }
   .todaybox { margin-top:10px; padding:10px 12px; border-radius:12px; background:var(--red-soft); }
   .tlabel { font-size:13px; font-weight:700; color:var(--red); }
   .tbig { display:flex; align-items:baseline; gap:8px; margin:2px 0; }
@@ -2157,12 +2162,45 @@ function planBlock(items, d) {
       }
   return h;
 }
+var CAL_SIMPLE = (function () { try { return localStorage.getItem('cal-simple') === '1'; } catch (e) { return false; } })();
+function setCalSimple(v) {
+  CAL_SIMPLE = v;
+  try { localStorage.setItem('cal-simple', v ? '1' : '0'); } catch (e) {}
+  render();
+}
+/** その日にやることを、分けずに1つの一覧で出す */
+function simpleDay(d, ctx) {
+  var rows = [], seen = {};
+  if (d === S.today) {
+    M.openLeaves().forEach(function (t) {
+      var e = M.effDeadline(t);
+      if (!t.temp && isPast(e.date, e.time)) { seen[t.id] = rows.length; rows.push({ t: t, h: t.estimate * (1 - (t.progress || 0) / 100), over: true }); }
+    });
+  }
+  (ctx.dayMap[d] ? ctx.dayMap[d].items : []).forEach(function (x) {
+    if (seen[x.t.id] !== undefined) { if (!rows[seen[x.t.id]].over) rows[seen[x.t.id]].h += x.h; return; }
+    seen[x.t.id] = rows.length; rows.push({ t: x.t, h: x.h, over: false, late: x.late });
+  });
+  rows.sort(function (a, b) { return (b.over ? 1 : 0) - (a.over ? 1 : 0) || calOrder(a.t, b.t); });
+  if (!rows.length) return '<div class="schedhead done" style="margin-top:10px">✓ この日にやることはありません</div>';
+  var tot = rows.reduce(function (s, x) { return s + x.h; }, 0);
+  var h = '<div class="simplesum">この日にやること <b>' + rows.length + '件</b>・<b>' + fmtH(tot) + '</b></div><div class="simplelist">';
+  rows.forEach(function (x) {
+    h += taskLine(x.t, pill(fmtH(x.h)) + dlPill(x.t, false), x.over ? pill('期限切れ', 'late') : x.late ? pill('遅れ', 'late') : '');
+  });
+  return h + '</div><div class="muted" style="font-size:12px;margin-top:6px">並び：期限切れ → 締め切りが近い順 → 優先度の高い順</div>';
+}
 function dayDetail(d, ctx) {
   var past = d < S.today;
   var dt = toDate(d);
   var title = (dt.getUTCMonth() + 1) + '月' + dt.getUTCDate() + '日(' + W[dt.getUTCDay()] + ')' + (d === S.today ? '・今日' : '');
   var h = '<div class="card" id="daydetail"><div class="ddhead"><b>' + title + '</b>'
     + (d !== S.today ? '<button class="mini" onclick="selectDay(S.today)">今日に戻る</button>' : '<span class="muted" style="font-size:12px">下に月のカレンダーがあります</span>') + '</div>';
+  if (!past) {
+    h += '<div class="viewsw"><button class="' + (CAL_SIMPLE ? 'on' : '') + '" onclick="setCalSimple(true)">☰ 一覧でぱっと見る</button>'
+      + '<button class="' + (CAL_SIMPLE ? '' : 'on') + '" onclick="setCalSimple(false)">🗂 分けて見る</button></div>';
+    if (CAL_SIMPLE) return h + simpleDay(d, ctx) + '</div>';
+  }
   // 今日の欄の一番上に、期限が過ぎたタスクをすべて出す
   var overdue = d === S.today ? M.openLeaves().filter(function (t) { var e = M.effDeadline(t); return !t.temp && isPast(e.date, e.time); }).sort(calOrder) : [];
   var overIds = {};
