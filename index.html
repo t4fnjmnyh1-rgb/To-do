@@ -126,6 +126,7 @@
   .row.temp { opacity:.5; }
   .pill { display:inline-flex; align-items:center; font-size:12px; line-height:1; padding:4px 7px; border-radius:6px; background:var(--soft); color:var(--sub); white-space:nowrap; }
   .pill.late { background:var(--red-soft); color:var(--red); font-weight:700; }
+  .pill.okp { background:var(--blue-soft); color:var(--blue); font-weight:700; }
   .pill.soon { background:var(--orange-soft); color:var(--orange); font-weight:700; }
   .pill.inherit { background:none; border:1px dashed var(--line); }
   .pill.good { background:var(--green-soft); color:var(--green); }
@@ -373,6 +374,9 @@
   .viewsw button.on { background:var(--blue); border-color:var(--blue); color:#fff; }
   .simplesum { margin-top:10px; font-size:15px; } .simplesum b { font-size:18px; }
   .simplelist { margin-top:4px; }
+  .dgroup { display:flex; justify-content:space-between; margin:14px 0 2px; padding:6px 10px; border-radius:8px; background:var(--blue-soft); color:var(--blue); font-weight:700; font-size:14px; }
+  .dgroup.over { background:var(--red-soft); color:var(--red); }
+  .dgroup.today { background:var(--orange-soft); color:var(--orange); }
   .row.isdone { opacity:.5; } .row.isdone .nm { text-decoration:line-through; }
   .todaybox { margin-top:10px; padding:10px 12px; border-radius:12px; background:var(--red-soft); }
   .tlabel { font-size:13px; font-weight:700; color:var(--red); }
@@ -2169,43 +2173,47 @@ function setCalSimple(v) {
   try { localStorage.setItem('cal-simple', v ? '1' : '0'); } catch (e) {}
   render();
 }
-/** その日にやることを、分けずに1つの一覧で出す（計画に入りきらないもの・期間中・終わったものも全部） */
+/** まだ終わっていないタスクを全部、締め切りの日付順に並べる */
 function localYmd(iso) { var x = new Date(iso); return isNaN(x) ? '' : x.getFullYear() + '-' + pad(x.getMonth() + 1) + '-' + pad(x.getDate()); }
+function fullDate(d) { var dt = toDate(d); return (dt.getUTCMonth() + 1) + '/' + dt.getUTCDate() + '(' + W[dt.getUTCDay()] + ')'; }
 function simpleDay(d, ctx) {
-  var rows = [], seen = {};
-  function add(t, h, kind) {
-    if (seen[t.id] !== undefined) { var r = rows[seen[t.id]]; if (kind === 'plan' && r.kind === 'plan') r.h += h; return; }
-    seen[t.id] = rows.length; rows.push({ t: t, h: h, kind: kind });
-  }
+  var list = M.openLeaves().filter(function (t) { return !t.temp; }).sort(calOrder);
+  var done = M.tasks.filter(function (t) { return !t.temp && t.done && M.isLeaf(t) && t.doneAt && localYmd(t.doneAt) === S.today; });
+  if (!list.length && !done.length) return '<div class="schedhead done" style="margin-top:10px">✓ 残っているタスクはありません</div>';
   function rest(t) { return t.estimate * (1 - (t.progress || 0) / 100); }
-  // 1) 期限切れ（今日のみ）
-  if (d === S.today) M.openLeaves().forEach(function (t) { var e = M.effDeadline(t); if (!t.temp && isPast(e.date, e.time)) add(t, rest(t), 'over'); });
-  // 2) この日に計画されているもの
-  (ctx.dayMap[d] ? ctx.dayMap[d].items : []).forEach(function (x) { if (!x.t.temp) add(x.t, x.h, x.late ? 'late' : 'plan'); });
-  // 3) この日が締め切りなのに、時間が足りず計画に入っていないもの
-  (ctx.dlMap[d] || []).forEach(function (t) { if (!t.temp) add(t, rest(t), 'nofit'); });
-  // 4) 期間中のタスク（開始日〜締切日）
-  ctx.spansOn(d).forEach(function (x) { add(x.t, 0, 'span'); });
-  var KR = { over: 0, nofit: 1, late: 2, plan: 3, span: 4 };
-  rows.sort(function (a, b) { return KR[a.kind] - KR[b.kind] || calOrder(a.t, b.t); });
-  // 5) この日に終わったもの
-  var done = M.tasks.filter(function (t) { return !t.temp && t.done && M.isLeaf(t) && t.doneAt && localYmd(t.doneAt) === d; });
-  if (!rows.length && !done.length) return '<div class="schedhead done" style="margin-top:10px">✓ この日にやることはありません</div>';
-  var open = rows.filter(function (x) { return x.kind !== 'span'; });
-  var tot = open.reduce(function (s, x) { return s + x.h; }, 0);
-  var nofit = rows.filter(function (x) { return x.kind === 'nofit'; }).length;
-  var h = '<div class="simplesum">この日にやること <b>' + open.length + '件</b>・<b>' + fmtH(tot) + '</b>'
-    + (done.length ? '<span class="muted">　✓済 ' + done.length + '件</span>' : '') + '</div>';
-  if (nofit) h += '<div class="muted" style="font-size:12px;color:var(--red)">うち ' + nofit + '件は締め切りがこの日ですが、使える時間に入りきっていません</div>';
-  h += '<div class="simplelist">';
-  rows.forEach(function (x) {
-    var tag = x.kind === 'over' ? pill('期限切れ', 'late') : x.kind === 'nofit' ? pill('時間が足りない', 'late') : x.kind === 'late' ? pill('遅れ', 'late') : x.kind === 'span' ? pill('期間中', '') : '';
-    h += taskLine(x.t, (x.kind === 'span' ? '' : pill(fmtH(x.h))) + dlPill(x.t, false), tag);
+  var todayIds = {};
+  (ctx.dayMap[S.today] ? ctx.dayMap[S.today].items : []).forEach(function (x) { todayIds[x.t.id] = 1; });
+  // 日付ごとのグループに分ける
+  var groups = [], gi = {};
+  list.forEach(function (t) {
+    var e = M.effDeadline(t), key, label, cls = '';
+    if (e.date && isPast(e.date, e.time)) { key = 'over'; label = '⚠ 期限切れ'; cls = 'over'; }
+    else if (e.date) { key = e.date; label = (e.date === S.today || e.date === addDays(S.today, 1) ? dayLabel(e.date) + ' ' : '') + fullDate(e.date); cls = e.date === S.today ? 'today' : ''; }
+    else { key = 'none'; label = '締め切りなし'; }
+    if (gi[key] === undefined) { gi[key] = groups.length; groups.push({ label: label, cls: cls, items: [] }); }
+    groups[gi[key]].items.push(t);
   });
-  done.forEach(function (t) {
-    h += taskLine(t, pill(fmtH(t.estimate)), pill('✓ 完了', '')).replace('<div class="row', '<div class="row isdone').replace('class="chk"', 'class="chk" checked');
+  var tot = list.reduce(function (s, t) { return s + rest(t); }, 0);
+  var h = '<div class="simplesum">残っているタスク <b>' + list.length + '件</b>・<b>' + fmtH(tot) + '</b>'
+    + (done.length ? '<span class="muted">　今日✓ ' + done.length + '件</span>' : '') + '</div>'
+    + '<div class="muted" style="font-size:12px">締め切りの日付順に全部並べています（同じ日は優先度の高い順）</div>';
+  groups.forEach(function (g) {
+    var gh = g.items.reduce(function (s, t) { return s + rest(t); }, 0);
+    h += '<div class="dgroup ' + g.cls + '"><span>' + g.label + '</span><span>' + g.items.length + '件・' + fmtH(gh) + '</span></div>';
+    g.items.forEach(function (t) {
+      var e = M.effDeadline(t), f = ctx.fin[t.id];
+      var tag = g.cls === 'over' ? '' : (e.date && f && f > e.date) ? pill('時間が足りない', 'late') : '';
+      if (todayIds[t.id]) tag += pill('今日やる', 'okp');
+      h += taskLine(t, pill(fmtH(rest(t))) + (g.cls === 'over' ? dlPill(t, false) : ''), tag);
+    });
   });
-  return h + '</div><div class="muted" style="font-size:12px;margin-top:6px">並び：期限切れ → 時間が足りない → 締め切りが近い順 → 期間中 → 完了</div>';
+  if (done.length) {
+    h += '<div class="dgroup"><span>✓ 今日終わったもの</span><span>' + done.length + '件</span></div>';
+    done.forEach(function (t) {
+      h += taskLine(t, pill(fmtH(t.estimate)), '').replace('<div class="row', '<div class="row isdone').replace('class="chk"', 'class="chk" checked');
+    });
+  }
+  return h;
 }
 function dayDetail(d, ctx) {
   var past = d < S.today;
@@ -2214,7 +2222,7 @@ function dayDetail(d, ctx) {
   var h = '<div class="card" id="daydetail"><div class="ddhead"><b>' + title + '</b>'
     + (d !== S.today ? '<button class="mini" onclick="selectDay(S.today)">今日に戻る</button>' : '<span class="muted" style="font-size:12px">下に月のカレンダーがあります</span>') + '</div>';
   if (!past) {
-    h += '<div class="viewsw"><button class="' + (CAL_SIMPLE ? 'on' : '') + '" onclick="setCalSimple(true)">☰ 一覧でぱっと見る</button>'
+    h += '<div class="viewsw"><button class="' + (CAL_SIMPLE ? 'on' : '') + '" onclick="setCalSimple(true)">☰ 全部を日付順に</button>'
       + '<button class="' + (CAL_SIMPLE ? '' : 'on') + '" onclick="setCalSimple(false)">🗂 分けて見る</button></div>';
     if (CAL_SIMPLE) return h + simpleDay(d, ctx) + '</div>';
   }
