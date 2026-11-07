@@ -375,7 +375,8 @@
   .simplesum { margin-top:10px; font-size:15px; } .simplesum b { font-size:18px; }
   .simplelist { margin-top:4px; }
   .focuscard { border:2px solid var(--orange); }
-  .fhead { display:flex; align-items:center; gap:8px; flex-wrap:wrap; } .fhead b { font-size:16px; } .fhead .mini { margin-left:auto; }
+  .fhead { display:flex; align-items:center; gap:8px; flex-wrap:wrap; } .fhead b { font-size:16px; } .fhead .fcount { margin-left:auto; }
+  .fadd { display:flex; gap:6px; margin-top:8px; } .fadd input { flex:1; margin:0; } .fadd .btn { width:auto; padding:0 16px; margin:0; }
   .fcount { font-size:13px; font-weight:700; color:var(--orange); }
   .fbar { height:6px; border-radius:3px; background:var(--orange-soft); margin:8px 0 2px; overflow:hidden; } .fbar i { display:block; height:100%; background:var(--orange); }
   .frow { display:flex; align-items:flex-start; gap:8px; padding:8px 0; border-bottom:1px solid var(--line); } .frow:last-of-type { border-bottom:0; }
@@ -388,6 +389,13 @@
   .fpick { display:flex; gap:10px; width:100%; text-align:left; padding:10px; margin-top:6px; border:1px solid var(--line); border-radius:10px; background:transparent; color:var(--ink); }
   .fpick.on { border-color:var(--orange); background:var(--orange-soft); }
   .fstar { font-size:20px; } .ftxt { display:flex; flex-direction:column; gap:2px; } .ftxt small { color:var(--sub); font-size:12px; }
+  .goallink { display:block; margin:2px 0 4px; font-size:13px; }
+  .goalin textarea, .goaledit textarea { width:100%; box-sizing:border-box; font-size:15px; }
+  .goaledit { margin-top:12px; border:1px dashed var(--line); border-radius:10px; padding:8px 10px; }
+  .goaledit summary { font-weight:700; color:var(--blue); cursor:pointer; }
+  .goalview { margin-top:8px; padding:8px 10px; border-radius:10px; background:var(--blue-soft); font-size:14px; display:flex; flex-direction:column; gap:4px; }
+  .goalview span { display:inline-block; min-width:5.5em; font-weight:700; color:var(--blue); font-size:12px; }
+  .goalview.small { margin:0 0 6px; font-size:13px; padding:6px 8px; }
   .dgroup { display:flex; justify-content:space-between; margin:14px 0 2px; padding:6px 10px; border-radius:8px; background:var(--blue-soft); color:var(--blue); font-weight:700; font-size:14px; }
   .dgroup.over { background:var(--red-soft); color:var(--red); }
   .dgroup.today { background:var(--orange-soft); color:var(--orange); }
@@ -605,11 +613,12 @@
       recurring: db.recurring,
       logs: db.logs || {},
       questions: db.questions || [],
+      focusItems: db.focusItems || [],
       bucketSched: db.bucketSched || {},
       snaps: db.snaps || {},
       tasks: db.tasks.map(function (t) {
         return { id: t.id, parentId: t.parentId, level: t.level, name: t.name, estimate: t.estimate,
-                 priority: t.priority, deadline: t.deadline, deadlineTime: t.deadlineTime || '', done: t.done, doneAt: t.doneAt || '', recurId: t.recurId || null, tmplId: t.tmplId || null, who: normWho(t.who), startDate: t.startDate || '', progress: t.progress || 0, focus: t.focus || '', sched: t.sched === 'exported' ? 'exported' : !!t.sched, mode: t.mode === 'bucket' ? 'bucket' : 'single' };
+                 priority: t.priority, deadline: t.deadline, deadlineTime: t.deadlineTime || '', done: t.done, doneAt: t.doneAt || '', recurId: t.recurId || null, tmplId: t.tmplId || null, who: normWho(t.who), startDate: t.startDate || '', progress: t.progress || 0, focus: t.focus || '', purpose: t.purpose || '', goal: t.goal || '', sched: t.sched === 'exported' ? 'exported' : !!t.sched, mode: t.mode === 'bucket' ? 'bucket' : 'single' };
       }),
       settings: db.settings, today: todayStr()
     }));
@@ -808,6 +817,7 @@
           if (pid === parentId) newIds.push(id);
           db.tasks.push({ id: id, parentId: pid, level: LEVELS[depth], name: String(n.name),
             estimate: Number(n.estimate) || 0, priority: Number(n.priority) || 3, deadline: n.deadline || '', deadlineTime: n.deadline ? (n.deadlineTime || '') : '', startDate: n.startDate || '', who: normWho(n.who), mode: n.mode === 'bucket' ? 'bucket' : 'single',
+            purpose: String(n.purpose || ''), goal: String(n.goal || ''),
             done: false, createdAt: now, doneAt: '' });
           walk(n.children || [], id, depth + 1);
         });
@@ -825,6 +835,28 @@
       if (f.progress !== undefined) t.progress = Math.max(0, Math.min(100, Number(f.progress) || 0));
       if (f.mode) t.mode = f.mode === 'bucket' ? 'bucket' : 'single';
       if (f.focus !== undefined) t.focus = f.focus || '';
+      if (f.purpose !== undefined) t.purpose = String(f.purpose || '');
+      if (f.goal !== undefined) t.goal = String(f.goal || '');
+      return finish(db);
+    },
+    addFocus: function (text, week) {
+      var db = load();
+      if (!db.focusItems) db.focusItems = [];
+      var id = db.focusItems.reduce(function (m, x) { return Math.max(m, x.id); }, 0) + 1;
+      db.focusItems.push({ id: id, week: String(week), text: String(text || ''), done: false, doneAt: '' });
+      return finish(db);
+    },
+    updateFocus: function (id, f) {
+      var db = load(), x = (db.focusItems || []).filter(function (y) { return y.id === Number(id); })[0];
+      if (!x) throw new Error('注力項目が見つかりません');
+      if (f.text !== undefined) x.text = String(f.text);
+      if (f.week !== undefined) x.week = String(f.week);
+      if (f.done !== undefined) { x.done = !!f.done; x.doneAt = x.done ? new Date().toISOString() : ''; }
+      return finish(db);
+    },
+    deleteFocus: function (id) {
+      var db = load();
+      db.focusItems = (db.focusItems || []).filter(function (y) { return y.id !== Number(id); });
       return finish(db);
     },
     setFocus: function (id, week) {
@@ -1412,6 +1444,17 @@ function renderComposer() {
 
   var curMin = C.estimate ? Math.round(C.estimate * 60) : 0;
   var h = '';
+  if (p) {
+    var root = p; while (root.parentId !== null && M.byId[root.parentId]) root = M.byId[root.parentId];
+    if (root.purpose || root.goal) h += goalView(root, true);
+  } else if (!C.repeat) {
+    if (!C.showGoal) h += '<button class="link goallink" onclick="C.showGoal=true;renderComposer();setTimeout(function(){$(\'cPurpose\').focus()},30)">🎯 目的・ゴールも書く（任意）</button>';
+    else h += '<div class="goalin"><div class="clabel" style="margin-top:4px">🎯 目的（なぜやる？）</div>'
+      + '<textarea id="cPurpose" rows="2" placeholder="例：A社にRPA導入の価値を理解してもらうため" oninput="C.purpose=this.value">' + esc(C.purpose || '') + '</textarea>'
+      + '<div class="clabel">🏁 目標・ゴールイメージ（どうなったら完了？）</div>'
+      + '<textarea id="cGoal" rows="2" placeholder="例：部長がOKを出し、次回の打ち合わせ日が決まっている" oninput="C.goal=this.value">' + esc(C.goal || '') + '</textarea>'
+      + '<button class="link" onclick="C.showGoal=false;C.purpose=\'\';C.goal=\'\';renderComposer()">書かない（閉じる）</button></div>';
+  }
   var rc = recurCtx(p);
   if (rc) {
     h += '<button class="everybtn' + (C.every ? ' on' : '') + '" onclick="C.every=!C.every;renderComposer();keepFocus()">'
@@ -1490,6 +1533,12 @@ function renderComposer() {
     + '</div><div class="clabel"><button class="link" onclick="openBulk(C.parentId)">文章でまとめて入力する</button></div>';
   h += '<button class="btn sub closebig" onpointerdown="event.preventDefault();closeComposer()" onclick="closeComposer()">入力を終わって閉じる</button>';
   $('cChips').innerHTML = h;
+}
+/** 親タスクの目的・ゴールの表示 */
+function goalView(t, small) {
+  return '<div class="goalview' + (small ? ' small' : '') + '">'
+    + (t.purpose ? '<div><span>🎯 目的</span>' + esc(t.purpose) + '</div>' : '')
+    + (t.goal ? '<div><span>🏁 ゴール</span>' + esc(t.goal) + '</div>' : '') + '</div>';
 }
 function keepFocus() { if (!('ontouchstart' in window)) $('cName').focus(); }
 function setEstMin(m) { var cur = C.estimate ? Math.round(C.estimate * 60) : 0; C.estimate = cur === m ? null : m / 60; renderComposer(); keepFocus(); }
@@ -1571,6 +1620,7 @@ function quickAdd() {
   var p = targetParent();
   var node = { name: name, estimate: C.estimate || 0, priority: effPriority(), deadline: C.deadline,
                deadlineTime: C.deadline ? C.dlTime : '', startDate: C.startDate, who: effWho(), mode: effMode(), children: [] };
+  if (!p && C.showGoal) { node.purpose = (C.purpose || '').trim(); node.goal = (C.goal || '').trim(); }
   inp.value = '';
   C.estimate = null;
 
@@ -1611,6 +1661,7 @@ function quickAdd() {
     renderComposer();
     callRaw('addTree', [null, [node]], function (res) {
       C.saving = false;
+      C.showGoal = false; C.purpose = ''; C.goal = '';
       if (res && res.newIds && res.newIds.length) {
         setTarget(res.newIds[0]);
         toast('親を登録しました。続けて子タスクを追加できます');
@@ -1907,77 +1958,48 @@ function outlookCounts() {
 // ---- 今週の注力 ----
 function weekMon(d) { var w = (toDate(d).getUTCDay() + 6) % 7; return addDays(d, -w); }
 function md(d) { var dt = toDate(d); return (dt.getUTCMonth() + 1) + '/' + dt.getUTCDate(); }
-function focusRow(t, week) {
-  var closed = M.closed(t), leaf = M.isLeaf(t), info = '';
-  if (leaf) info = closed ? '' : pill('残り' + fmtH(M.hours(t, true)));
-  else {
-    var ls = M.leaves(t), dn = ls.filter(function (l) { return M.closed(l); }).length;
-    info = pill(dn + '/' + ls.length + '完了') + (closed ? '' : pill('残り' + fmtH(M.hours(t, true))));
-  }
-  var path = M.path(t);
-  return '<div class="frow' + (closed ? ' isdone' : '') + '"><input type="checkbox" class="chk"' + (closed ? ' checked' : '') + ' onchange="toggleDone(' + t.id + ',this.checked)" aria-label="完了">'
-    + '<div class="main" onclick="openEdit(' + t.id + ')"><div class="nm">' + esc(t.name) + '</div>'
-    + (path ? '<div class="fpath">' + esc(path) + '</div>' : '')
-    + '<div class="meta">' + priBadge(t.priority) + info + (M.effDeadline(t).date ? dlPill(t, closed) : '') + '</div></div>'
-    + '<button class="fx" onclick="setFocus(' + t.id + ',\'\')" aria-label="注力から外す">×</button></div>';
-}
 function focusCard() {
-  var week = weekMon(S.today), prev = addDays(week, -7);
-  var list = M.tasks.filter(function (t) { return !t.temp && t.focus === week; }).sort(function (a, b) { return (M.closed(a) ? 1 : 0) - (M.closed(b) ? 1 : 0) || calOrder(a, b); });
-  var left = M.tasks.filter(function (t) { return !t.temp && t.focus && t.focus < week && !M.closed(t); }).sort(calOrder);
-  var dn = list.filter(function (t) { return M.closed(t); }).length;
+  var week = weekMon(S.today), all = S.focusItems || [];
+  var list = all.filter(function (x) { return x.week === week; }).sort(function (a, b) { return (a.done ? 1 : 0) - (b.done ? 1 : 0) || a.id - b.id; });
+  var left = all.filter(function (x) { return x.week < week && !x.done; });
+  var dn = list.filter(function (x) { return x.done; }).length;
   var h = '<div class="card focuscard"><div class="fhead"><b>⭐ 今週の注力</b><span class="muted">' + md(week) + '〜' + md(addDays(week, 6)) + '</span>'
-    + (list.length ? '<span class="fcount">' + dn + '/' + list.length + ' 達成</span>' : '')
-    + '<button class="mini" onclick="openFocusPick()">＋ 選ぶ</button></div>';
-  if (list.length) {
-    h += '<div class="fbar"><i style="width:' + Math.round(dn / list.length * 100) + '%"></i></div>';
-    list.forEach(function (t) { h += focusRow(t, week); });
-  } else {
-    h += '<p class="muted" style="margin:8px 0 2px;font-size:13px">今週中にやりたいことを「＋ 選ぶ」から追加すると、ここに一覧で出ます。親タスクも選べます。</p>';
-  }
+    + (list.length ? '<span class="fcount">' + dn + '/' + list.length + ' 達成</span>' : '') + '</div>';
+  if (list.length) h += '<div class="fbar"><i style="width:' + Math.round(dn / list.length * 100) + '%"></i></div>';
+  list.forEach(function (x) {
+    h += '<div class="frow' + (x.done ? ' isdone' : '') + '"><input type="checkbox" class="chk"' + (x.done ? ' checked' : '') + ' onchange="doneFocus(' + x.id + ',this.checked)" aria-label="達成">'
+      + '<div class="main" onclick="editFocus(' + x.id + ')"><div class="nm">' + esc(x.text) + '</div></div></div>';
+  });
+  h += '<div class="fadd"><input id="focusIn" placeholder="今週やりたいことを書く" enterkeyhint="done" onkeydown="if(event.key===\'Enter\'&&!event.isComposing){event.preventDefault();addFocus()}">'
+    + '<button class="btn" onclick="addFocus()">追加</button></div>';
   if (left.length) {
-    h += '<details class="fleft"><summary>先週までの注力で残っているもの（' + left.length + '件）</summary>';
-    left.forEach(function (t) {
-      h += '<div class="fl"><span>' + esc(t.name) + '</span><button class="mini" onclick="setFocus(' + t.id + ',\'' + week + '\')">今週も続ける</button>'
-        + '<button class="mini" onclick="setFocus(' + t.id + ',\'\')">外す</button></div>';
+    h += '<details class="fleft"><summary>先週までで残っているもの（' + left.length + '件）</summary>';
+    left.forEach(function (x) {
+      h += '<div class="fl"><span>' + esc(x.text) + '</span><button class="mini" onclick="moveFocus(' + x.id + ')">今週も続ける</button>'
+        + '<button class="mini" onclick="doneFocus(' + x.id + ',true)">済にする</button></div>';
     });
     h += '</details>';
   }
   return h + '</div>';
 }
-function setFocus(id, week) {
-  S.tasks.forEach(function (x) { if (x.id === id) x.focus = week; });
-  callRaw('setFocus', [id, week], function () {
-    toast(week ? '今週の注力に入れました' : '注力から外しました');
-    setTimeout(function () { if (!$('modal').classList.contains('hidden') && $('fpList')) fpRender(); }, 0);
-  });
+function addFocus() {
+  var v = ($('focusIn').value || '').trim();
+  if (!v) { $('focusIn').focus(); return; }
+  call('addFocus', [v, weekMon(S.today)], function () { toast('追加しました'); setTimeout(function () { if ($('focusIn')) $('focusIn').focus(); }, 0); });
 }
-var FP_Q = '';
-function openFocusPick() {
-  FP_Q = '';
-  openPanel('<h3>⭐ 今週の注力を選ぶ</h3><p class="muted" style="margin-top:0">タップで追加・もう一度タップで外せます。</p>'
-    + '<input id="fpQ" placeholder="タスク名で探す" oninput="FP_Q=this.value;fpRender()">'
-    + '<div id="fpList"></div><div class="btns"><button class="btn" onclick="closeModal();render()">閉じる</button></div>');
-  fpRender();
+function doneFocus(id, v) { call('updateFocus', [id, { done: v }], function () { toast(v ? '達成！' : '未達成に戻しました'); }); }
+function moveFocus(id) { call('updateFocus', [id, { week: weekMon(S.today) }], function () { toast('今週に入れました'); }); }
+function editFocus(id) {
+  var x = (S.focusItems || []).filter(function (y) { return y.id === id; })[0]; if (!x) return;
+  openPanel('<h3>⭐ 注力項目を編集</h3><label>内容</label><textarea id="feText" rows="3">' + esc(x.text) + '</textarea>'
+    + '<div class="btns"><button class="btn sub" onclick="closeModal()">やめる</button><button class="btn" onclick="saveFocus(' + id + ')">保存</button></div>'
+    + '<button class="btn sub" style="width:100%;margin-top:14px;color:var(--red)" onclick="delFocus(' + id + ')">この項目を消す</button>');
 }
-function fpRender() {
-  var week = weekMon(S.today), words = normText(FP_Q).split(/\s+/).filter(Boolean);
-  var list = M.tasks.filter(function (t) {
-    if (t.temp || M.closed(t)) return false;
-    var nm = normText(t.name + ' ' + M.path(t));
-    return words.every(function (w) { return nm.indexOf(w) >= 0; });
-  }).sort(function (a, b) { return ((b.focus === week) - (a.focus === week)) || calOrder(a, b); });
-  var h = '';
-  list.slice(0, 80).forEach(function (t) {
-    var on = t.focus === week, path = M.path(t);
-    h += '<button class="fpick' + (on ? ' on' : '') + '" onclick="setFocus(' + t.id + ',\'' + (on ? '' : week) + '\')">'
-      + '<span class="fstar">' + (on ? '⭐' : '☆') + '</span><span class="ftxt"><b>' + esc(t.name) + '</b>'
-      + (path ? '<small>' + esc(path) + '</small>' : '') + '<small>' + (M.effDeadline(t).date ? '〆' + dayLabel(M.effDeadline(t).date) + '・' : '') + '残り' + fmtH(M.hours(t, true)) + '</small></span></button>';
-  });
-  if (!list.length) h = '<p class="muted">見つかりません</p>';
-  else if (list.length > 80) h += '<p class="muted">ほか' + (list.length - 80) + '件。名前で探してください</p>';
-  $('fpList').innerHTML = h;
+function saveFocus(id) {
+  var v = ($('feText').value || '').trim(); if (!v) return;
+  call('updateFocus', [id, { text: v }], function () { closeModal(); toast('保存しました'); });
 }
+function delFocus(id) { call('deleteFocus', [id], function () { closeModal(); toast('消しました'); }); }
 function outlookSummaryBtn() {
   var c = outlookCounts();
   var txt = [c.notYet ? '個別 未' + c.notYet + '件' : '', c.wait + c.bucketWait ? '確認待ち' + (c.wait + c.bucketWait) + '件' : '', c.bucketNotYet ? 'バケット未' + c.bucketNotYet + '日' : ''].filter(Boolean).join('・');
@@ -2839,7 +2861,8 @@ function viewFocus() {
     + '<div class="card famsum"><div class="muted">親タスクの全体</div><b>' + esc(r.name) + '</b>'
     + '<div class="meta">' + priBadge(r.priority) + dlPill(r, M.closed(r))
     + pill('完了 ' + doneN + ' / ' + leaves.length + '件') + pill('残り ' + fmtH(rest) + ' / ' + fmtH(all)) + '</div>'
-    + '<div class="progress" style="max-width:none"><i style="width:' + (all ? Math.round((all - rest) / all * 100) : 0) + '%"></i></div></div>'
+    + '<div class="progress" style="max-width:none"><i style="width:' + (all ? Math.round((all - rest) / all * 100) : 0) + '%"></i></div>'
+    + (r.purpose || r.goal ? goalView(r) : '') + '</div>'
     + '<div class="card group">' + treeRow(r, 0) + '</div>';
   return h;
 }
@@ -2904,6 +2927,7 @@ function treeRow(t, depth) {
   var leaf = M.isLeaf(t), done = M.closed(t);
   var meta = [];
   if (t.tmplId) meta.push('<span class="tag" title="毎回つく子タスク">🔁</span>');
+  if (t.parentId === null && (t.purpose || t.goal)) meta.push('<span class="tag" title="目的・ゴールあり">🎯</span>');
   if (t.recurId) meta.push('<span class="tag">🔁' + (depth === 0 && !done && (window._laterCount || {})[t.recurId] ? ' ほか' + window._laterCount[t.recurId] + '回' : '') + '</span>');
   if (leaf) {
     meta.push(t.estimate ? pill(fmtH(t.estimate)) : pill('見積なし', 'late'));
@@ -3045,10 +3069,12 @@ function openEdit(id) {
     + (leaf ? '<input id="eEst" type="number" min="0" step="5" inputmode="numeric" value="' + Math.round(t.estimate * 60) + '">'
             : '<input id="eEst" type="hidden" value="' + Math.round(t.estimate * 60) + '"><div class="muted">下のタスクの合計：' + fmtH(M.hours(t, false)) + '</div>')
     + '<label>優先度</label><select id="ePri">' + pri + '</select>'
+    + (t.parentId === null ? '<details class="goaledit"' + (t.purpose || t.goal ? ' open' : '') + '><summary>🎯 目的・ゴール（任意）</summary>'
+      + '<label>🎯 目的（なぜやる？）</label><textarea id="ePurpose" rows="2">' + esc(t.purpose || '') + '</textarea>'
+      + '<label>🏁 目標・ゴールイメージ（どうなったら完了？）</label><textarea id="eGoal" rows="2">' + esc(t.goal || '') + '</textarea></details>' : '')
     + '<div class="clabel">予定への入れ方</div><div class="chips" id="eModeChips">'
     + '<button class="chip modechip' + (t.mode !== 'bucket' ? ' on' : '') + '" data-m="single" onclick="pickEMode(this)">📌 個別に予定を入れる</button>'
     + '<button class="chip modechip bucket' + (t.mode === 'bucket' ? ' on' : '') + '" data-m="bucket" onclick="pickEMode(this)">🗂 バケットでまとめてやる</button></div>'
-    + '<label class="showdone" style="margin:12px 0 0"><input type="checkbox" class="chk" id="eFocus" ' + (t.focus === weekMon(S.today) ? 'checked' : '') + '>⭐ 今週の注力にする</label>'
     + '<label class="showdone" style="margin:12px 0 0"><input type="checkbox" class="chk" id="eSched" ' + (t.sched === true ? 'checked' : '') + '>📅 Outlookに入れたのを確認した（個別のとき）</label>'
     + '<div class="clabel">進め方</div><div class="chips" id="eWhoChips">'
     + '<button class="chip whochip' + (t.who !== 'others' && t.who !== 'gap' ? ' on' : '') + '" data-w="self" onclick="pickEWho(this)">🙋 自分で完結</button>'
@@ -3185,7 +3211,7 @@ function eWho() { var b = document.querySelector('#eWhoChips .chip.on'); return 
 function saveEdit(id) {
   var name = $('eName').value.trim();
   if (!name) { toast('タスク名を入れてください'); return; }
-  call('updateTask', [id, { name: name, estimate: (parseFloat($('eEst').value) || 0) / 60, priority: +$('ePri').value, deadline: $('eDl').value, deadlineTime: $('eDl').value ? $('eTm').value : '', startDate: $('eSt') ? $('eSt').value : '', progress: Math.max(0, Math.min(100, +$('ePr').value || 0)), who: eWho(), mode: eMode(), focus: $('eFocus').checked ? weekMon(S.today) : (M.byId[id].focus === weekMon(S.today) ? '' : (M.byId[id].focus || '')), sched: $('eSched').checked ? true : (M.byId[id].sched === 'exported' ? 'exported' : false) }],
+  call('updateTask', [id, { name: name, estimate: (parseFloat($('eEst').value) || 0) / 60, priority: +$('ePri').value, deadline: $('eDl').value, deadlineTime: $('eDl').value ? $('eTm').value : '', startDate: $('eSt') ? $('eSt').value : '', progress: Math.max(0, Math.min(100, +$('ePr').value || 0)), who: eWho(), mode: eMode(), purpose: $('ePurpose') ? $('ePurpose').value.trim() : undefined, goal: $('eGoal') ? $('eGoal').value.trim() : undefined, sched: $('eSched').checked ? true : (M.byId[id].sched === 'exported' ? 'exported' : false) }],
     function () { closeModal(); toast('保存しました'); });
 }
 function removeTask(id) {
