@@ -374,6 +374,20 @@
   .viewsw button.on { background:var(--blue); border-color:var(--blue); color:#fff; }
   .simplesum { margin-top:10px; font-size:15px; } .simplesum b { font-size:18px; }
   .simplelist { margin-top:4px; }
+  .focuscard { border:2px solid var(--orange); }
+  .fhead { display:flex; align-items:center; gap:8px; flex-wrap:wrap; } .fhead b { font-size:16px; } .fhead .mini { margin-left:auto; }
+  .fcount { font-size:13px; font-weight:700; color:var(--orange); }
+  .fbar { height:6px; border-radius:3px; background:var(--orange-soft); margin:8px 0 2px; overflow:hidden; } .fbar i { display:block; height:100%; background:var(--orange); }
+  .frow { display:flex; align-items:flex-start; gap:8px; padding:8px 0; border-bottom:1px solid var(--line); } .frow:last-of-type { border-bottom:0; }
+  .frow .main { flex:1; min-width:0; } .frow .nm { font-weight:700; }
+  .frow.isdone { opacity:.5; } .frow.isdone .nm { text-decoration:line-through; }
+  .fpath { font-size:11px; color:var(--sub); }
+  .fx { border:0; background:transparent; color:var(--sub); font-size:20px; width:36px; height:36px; }
+  .fleft { margin-top:8px; font-size:13px; } .fleft summary { color:var(--sub); cursor:pointer; }
+  .fl { display:flex; align-items:center; gap:6px; padding:5px 0; } .fl span { flex:1; }
+  .fpick { display:flex; gap:10px; width:100%; text-align:left; padding:10px; margin-top:6px; border:1px solid var(--line); border-radius:10px; background:transparent; color:var(--ink); }
+  .fpick.on { border-color:var(--orange); background:var(--orange-soft); }
+  .fstar { font-size:20px; } .ftxt { display:flex; flex-direction:column; gap:2px; } .ftxt small { color:var(--sub); font-size:12px; }
   .dgroup { display:flex; justify-content:space-between; margin:14px 0 2px; padding:6px 10px; border-radius:8px; background:var(--blue-soft); color:var(--blue); font-weight:700; font-size:14px; }
   .dgroup.over { background:var(--red-soft); color:var(--red); }
   .dgroup.today { background:var(--orange-soft); color:var(--orange); }
@@ -595,7 +609,7 @@
       snaps: db.snaps || {},
       tasks: db.tasks.map(function (t) {
         return { id: t.id, parentId: t.parentId, level: t.level, name: t.name, estimate: t.estimate,
-                 priority: t.priority, deadline: t.deadline, deadlineTime: t.deadlineTime || '', done: t.done, doneAt: t.doneAt || '', recurId: t.recurId || null, tmplId: t.tmplId || null, who: normWho(t.who), startDate: t.startDate || '', progress: t.progress || 0, sched: t.sched === 'exported' ? 'exported' : !!t.sched, mode: t.mode === 'bucket' ? 'bucket' : 'single' };
+                 priority: t.priority, deadline: t.deadline, deadlineTime: t.deadlineTime || '', done: t.done, doneAt: t.doneAt || '', recurId: t.recurId || null, tmplId: t.tmplId || null, who: normWho(t.who), startDate: t.startDate || '', progress: t.progress || 0, focus: t.focus || '', sched: t.sched === 'exported' ? 'exported' : !!t.sched, mode: t.mode === 'bucket' ? 'bucket' : 'single' };
       }),
       settings: db.settings, today: todayStr()
     }));
@@ -810,6 +824,13 @@
       if (f.startDate !== undefined) t.startDate = f.startDate || '';
       if (f.progress !== undefined) t.progress = Math.max(0, Math.min(100, Number(f.progress) || 0));
       if (f.mode) t.mode = f.mode === 'bucket' ? 'bucket' : 'single';
+      if (f.focus !== undefined) t.focus = f.focus || '';
+      return finish(db);
+    },
+    setFocus: function (id, week) {
+      var db = load(), t = db.tasks.filter(function (x) { return x.id === Number(id); })[0];
+      if (!t) throw new Error('タスクが見つかりません');
+      t.focus = week || '';
       return finish(db);
     },
     setDone: function (id, done) {
@@ -1883,6 +1904,80 @@ function outlookCounts() {
   });
   return c;
 }
+// ---- 今週の注力 ----
+function weekMon(d) { var w = (toDate(d).getUTCDay() + 6) % 7; return addDays(d, -w); }
+function md(d) { var dt = toDate(d); return (dt.getUTCMonth() + 1) + '/' + dt.getUTCDate(); }
+function focusRow(t, week) {
+  var closed = M.closed(t), leaf = M.isLeaf(t), info = '';
+  if (leaf) info = closed ? '' : pill('残り' + fmtH(M.hours(t, true)));
+  else {
+    var ls = M.leaves(t), dn = ls.filter(function (l) { return M.closed(l); }).length;
+    info = pill(dn + '/' + ls.length + '完了') + (closed ? '' : pill('残り' + fmtH(M.hours(t, true))));
+  }
+  var path = M.path(t);
+  return '<div class="frow' + (closed ? ' isdone' : '') + '"><input type="checkbox" class="chk"' + (closed ? ' checked' : '') + ' onchange="toggleDone(' + t.id + ',this.checked)" aria-label="完了">'
+    + '<div class="main" onclick="openEdit(' + t.id + ')"><div class="nm">' + esc(t.name) + '</div>'
+    + (path ? '<div class="fpath">' + esc(path) + '</div>' : '')
+    + '<div class="meta">' + priBadge(t.priority) + info + (M.effDeadline(t).date ? dlPill(t, closed) : '') + '</div></div>'
+    + '<button class="fx" onclick="setFocus(' + t.id + ',\'\')" aria-label="注力から外す">×</button></div>';
+}
+function focusCard() {
+  var week = weekMon(S.today), prev = addDays(week, -7);
+  var list = M.tasks.filter(function (t) { return !t.temp && t.focus === week; }).sort(function (a, b) { return (M.closed(a) ? 1 : 0) - (M.closed(b) ? 1 : 0) || calOrder(a, b); });
+  var left = M.tasks.filter(function (t) { return !t.temp && t.focus && t.focus < week && !M.closed(t); }).sort(calOrder);
+  var dn = list.filter(function (t) { return M.closed(t); }).length;
+  var h = '<div class="card focuscard"><div class="fhead"><b>⭐ 今週の注力</b><span class="muted">' + md(week) + '〜' + md(addDays(week, 6)) + '</span>'
+    + (list.length ? '<span class="fcount">' + dn + '/' + list.length + ' 達成</span>' : '')
+    + '<button class="mini" onclick="openFocusPick()">＋ 選ぶ</button></div>';
+  if (list.length) {
+    h += '<div class="fbar"><i style="width:' + Math.round(dn / list.length * 100) + '%"></i></div>';
+    list.forEach(function (t) { h += focusRow(t, week); });
+  } else {
+    h += '<p class="muted" style="margin:8px 0 2px;font-size:13px">今週中にやりたいことを「＋ 選ぶ」から追加すると、ここに一覧で出ます。親タスクも選べます。</p>';
+  }
+  if (left.length) {
+    h += '<details class="fleft"><summary>先週までの注力で残っているもの（' + left.length + '件）</summary>';
+    left.forEach(function (t) {
+      h += '<div class="fl"><span>' + esc(t.name) + '</span><button class="mini" onclick="setFocus(' + t.id + ',\'' + week + '\')">今週も続ける</button>'
+        + '<button class="mini" onclick="setFocus(' + t.id + ',\'\')">外す</button></div>';
+    });
+    h += '</details>';
+  }
+  return h + '</div>';
+}
+function setFocus(id, week) {
+  S.tasks.forEach(function (x) { if (x.id === id) x.focus = week; });
+  callRaw('setFocus', [id, week], function () {
+    toast(week ? '今週の注力に入れました' : '注力から外しました');
+    setTimeout(function () { if (!$('modal').classList.contains('hidden') && $('fpList')) fpRender(); }, 0);
+  });
+}
+var FP_Q = '';
+function openFocusPick() {
+  FP_Q = '';
+  openPanel('<h3>⭐ 今週の注力を選ぶ</h3><p class="muted" style="margin-top:0">タップで追加・もう一度タップで外せます。</p>'
+    + '<input id="fpQ" placeholder="タスク名で探す" oninput="FP_Q=this.value;fpRender()">'
+    + '<div id="fpList"></div><div class="btns"><button class="btn" onclick="closeModal();render()">閉じる</button></div>');
+  fpRender();
+}
+function fpRender() {
+  var week = weekMon(S.today), words = normText(FP_Q).split(/\s+/).filter(Boolean);
+  var list = M.tasks.filter(function (t) {
+    if (t.temp || M.closed(t)) return false;
+    var nm = normText(t.name + ' ' + M.path(t));
+    return words.every(function (w) { return nm.indexOf(w) >= 0; });
+  }).sort(function (a, b) { return ((b.focus === week) - (a.focus === week)) || calOrder(a, b); });
+  var h = '';
+  list.slice(0, 80).forEach(function (t) {
+    var on = t.focus === week, path = M.path(t);
+    h += '<button class="fpick' + (on ? ' on' : '') + '" onclick="setFocus(' + t.id + ',\'' + (on ? '' : week) + '\')">'
+      + '<span class="fstar">' + (on ? '⭐' : '☆') + '</span><span class="ftxt"><b>' + esc(t.name) + '</b>'
+      + (path ? '<small>' + esc(path) + '</small>' : '') + '<small>' + (M.effDeadline(t).date ? '〆' + dayLabel(M.effDeadline(t).date) + '・' : '') + '残り' + fmtH(M.hours(t, true)) + '</small></span></button>';
+  });
+  if (!list.length) h = '<p class="muted">見つかりません</p>';
+  else if (list.length > 80) h += '<p class="muted">ほか' + (list.length - 80) + '件。名前で探してください</p>';
+  $('fpList').innerHTML = h;
+}
 function outlookSummaryBtn() {
   var c = outlookCounts();
   var txt = [c.notYet ? '個別 未' + c.notYet + '件' : '', c.wait + c.bucketWait ? '確認待ち' + (c.wait + c.bucketWait) + '件' : '', c.bucketNotYet ? 'バケット未' + c.bucketNotYet + '日' : ''].filter(Boolean).join('・');
@@ -2066,8 +2161,8 @@ function viewCal() {
   }
   h += '</div><div class="legend"><span><i class="lg"></i>やる予定/使える時間（時:分）</span><span class="late">〆n 間に合わない</span><span><i class="lg" style="background:#5B8BD6"></i>期間（開始〜締切）</span><span>〆n 締め切り</span></div></div>';
   // 今日を見ているときは、今日の分を一番上に出す（月のカレンダーはその下）
-  if (selDay === S.today) return outlookSummaryBtn() + dayDetail(selDay, ctx) + h;
-  return outlookSummaryBtn() + h + dayDetail(selDay, ctx);
+  if (selDay === S.today) return focusCard() + outlookSummaryBtn() + dayDetail(selDay, ctx) + h;
+  return focusCard() + outlookSummaryBtn() + h + dayDetail(selDay, ctx);
 }
 
 /**
@@ -2953,6 +3048,7 @@ function openEdit(id) {
     + '<div class="clabel">予定への入れ方</div><div class="chips" id="eModeChips">'
     + '<button class="chip modechip' + (t.mode !== 'bucket' ? ' on' : '') + '" data-m="single" onclick="pickEMode(this)">📌 個別に予定を入れる</button>'
     + '<button class="chip modechip bucket' + (t.mode === 'bucket' ? ' on' : '') + '" data-m="bucket" onclick="pickEMode(this)">🗂 バケットでまとめてやる</button></div>'
+    + '<label class="showdone" style="margin:12px 0 0"><input type="checkbox" class="chk" id="eFocus" ' + (t.focus === weekMon(S.today) ? 'checked' : '') + '>⭐ 今週の注力にする</label>'
     + '<label class="showdone" style="margin:12px 0 0"><input type="checkbox" class="chk" id="eSched" ' + (t.sched === true ? 'checked' : '') + '>📅 Outlookに入れたのを確認した（個別のとき）</label>'
     + '<div class="clabel">進め方</div><div class="chips" id="eWhoChips">'
     + '<button class="chip whochip' + (t.who !== 'others' && t.who !== 'gap' ? ' on' : '') + '" data-w="self" onclick="pickEWho(this)">🙋 自分で完結</button>'
@@ -3089,7 +3185,7 @@ function eWho() { var b = document.querySelector('#eWhoChips .chip.on'); return 
 function saveEdit(id) {
   var name = $('eName').value.trim();
   if (!name) { toast('タスク名を入れてください'); return; }
-  call('updateTask', [id, { name: name, estimate: (parseFloat($('eEst').value) || 0) / 60, priority: +$('ePri').value, deadline: $('eDl').value, deadlineTime: $('eDl').value ? $('eTm').value : '', startDate: $('eSt') ? $('eSt').value : '', progress: Math.max(0, Math.min(100, +$('ePr').value || 0)), who: eWho(), mode: eMode(), sched: $('eSched').checked ? true : (M.byId[id].sched === 'exported' ? 'exported' : false) }],
+  call('updateTask', [id, { name: name, estimate: (parseFloat($('eEst').value) || 0) / 60, priority: +$('ePri').value, deadline: $('eDl').value, deadlineTime: $('eDl').value ? $('eTm').value : '', startDate: $('eSt') ? $('eSt').value : '', progress: Math.max(0, Math.min(100, +$('ePr').value || 0)), who: eWho(), mode: eMode(), focus: $('eFocus').checked ? weekMon(S.today) : (M.byId[id].focus === weekMon(S.today) ? '' : (M.byId[id].focus || '')), sched: $('eSched').checked ? true : (M.byId[id].sched === 'exported' ? 'exported' : false) }],
     function () { closeModal(); toast('保存しました'); });
 }
 function removeTask(id) {
