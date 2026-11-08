@@ -1444,6 +1444,25 @@ function renderComposer() {
 
   var curMin = C.estimate ? Math.round(C.estimate * 60) : 0;
   var h = '';
+  // 締め切りは一番上
+  var dh = (function () { var h = '';
+  if (!p && C.repeat) {
+    h += '<p class="muted" style="margin:8px 0 0">締め切りは各回の日付になります。7日先までの分が自動で追加されます。</p>';
+  } else {
+  var inheritLabel = p ? (M.effDeadline(p).date ? '上と同じ（' + dayLabel(M.effDeadline(p).date) + '）' : '上と同じ（なし）') : 'なし';
+  var picks = [['', inheritLabel], ['today', '今日'], ['tomorrow', '明日'], ['after2', '明後日'], ['fri', '金曜'], ['nextmon', '来週月']];
+  var custom = C.dlKey === 'custom';
+  h += '<div class="clabel" style="margin-top:2px">締め切り</div><div class="chips">';
+  picks.forEach(function (x) {
+    h += '<button class="chip' + (C.dlKey === x[0] ? ' on' : '') + '" onclick="setDl(\'' + x[0] + '\')">' + x[1] + '</button>';
+  });
+  h += '</div><div class="dateline"><span class="muted">日付を指定：</span>'
+    + '<input type="date" class="dateinput' + (custom ? ' on' : '') + '" value="' + (custom ? C.deadline : '') + '" onchange="setDl(\'custom\', this.value)">'
+    + (custom ? '<button class="link" onclick="setDl(\'\')">解除</button>' : '') + '</div>';
+  }
+  if (C.dlKey || (!p && C.repeat)) h += timeRow();
+  return h; })();
+  h += dh;
   if (p) {
     var root = p; while (root.parentId !== null && M.byId[root.parentId]) root = M.byId[root.parentId];
     if (root.purpose || root.goal) h += goalView(root, true);
@@ -1492,21 +1511,6 @@ function renderComposer() {
         + '<button class="chip step" onclick="stepMday(1)">＋1日</button></div>';
     }
   }
-  if (!p && C.repeat) {
-    h += '<p class="muted" style="margin:8px 0 0">締め切りは各回の日付になります。7日先までの分が自動で追加されます。</p>';
-  } else {
-  var inheritLabel = p ? (M.effDeadline(p).date ? '上と同じ（' + dayLabel(M.effDeadline(p).date) + '）' : '上と同じ（なし）') : 'なし';
-  var picks = [['', inheritLabel], ['today', '今日'], ['tomorrow', '明日'], ['after2', '明後日'], ['fri', '金曜'], ['nextmon', '来週月']];
-  var custom = C.dlKey === 'custom';
-  h += '<div class="clabel">締め切り</div><div class="chips">';
-  picks.forEach(function (x) {
-    h += '<button class="chip' + (C.dlKey === x[0] ? ' on' : '') + '" onclick="setDl(\'' + x[0] + '\')">' + x[1] + '</button>';
-  });
-  h += '</div><div class="dateline"><span class="muted">日付を指定：</span>'
-    + '<input type="date" class="dateinput' + (custom ? ' on' : '') + '" value="' + (custom ? C.deadline : '') + '" onchange="setDl(\'custom\', this.value)">'
-    + (custom ? '<button class="link" onclick="setDl(\'\')">解除</button>' : '') + '</div>';
-  }
-  if (C.dlKey || (!p && C.repeat)) h += timeRow();
   if (!C.repeat) {
     h += '<div class="clabel">開始日（何日かかけてやるとき）</div><div class="chips">'
       + '<button class="chip' + (!C.startDate ? ' on' : '') + '" onclick="setStart(\'\')">なし</button>'
